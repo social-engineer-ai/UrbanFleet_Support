@@ -86,6 +86,31 @@ export function AdminDashboard({ students, isInstructor }: { students: StudentDa
     loadTas();
   }
 
+  async function exportCsv() {
+    window.open("/api/admin/export", "_blank");
+  }
+
+  async function downloadDump() {
+    window.open("/api/admin/dump", "_blank");
+  }
+
+  async function dumpToS3() {
+    if (!confirm("Upload all conversation data to S3?")) return;
+    const res = await fetch("/api/admin/dump", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uploadToS3: true }),
+    });
+    const data = await res.json();
+    if (data.s3?.error) {
+      alert("S3 upload failed: " + data.s3.error);
+    } else if (data.s3) {
+      alert(`Uploaded to s3://${data.s3.bucket}/${data.s3.prefix}\n${data.s3.files.length} files`);
+    } else {
+      alert(`Dump ready: ${data.studentCount} students, ${data.totalConversations} conversations`);
+    }
+  }
+
   async function loadConversation(convId: string) {
     setSelectedConversation(convId);
     const res = await fetch(`/api/conversations/${convId}/messages`);
@@ -119,6 +144,26 @@ export function AdminDashboard({ students, isInstructor }: { students: StudentDa
                 358: {student358}
               </span>
             </div>
+            <button
+              onClick={exportCsv}
+              className="text-sm bg-green-100 text-green-800 px-3 py-1 rounded-lg hover:bg-green-200"
+            >
+              Export CSV
+            </button>
+            <button
+              onClick={downloadDump}
+              className="text-sm bg-cyan-100 text-cyan-800 px-3 py-1 rounded-lg hover:bg-cyan-200"
+            >
+              Download JSON
+            </button>
+            {isInstructor && (
+              <button
+                onClick={dumpToS3}
+                className="text-sm bg-violet-100 text-violet-800 px-3 py-1 rounded-lg hover:bg-violet-200"
+              >
+                Dump to S3
+              </button>
+            )}
             {isInstructor && (
               <button
                 onClick={() => { setShowTaManager(!showTaManager); if (!showTaManager) loadTas(); }}

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { analyzeConversationAndUpdateState } from "@/lib/agents/state";
+import { gradeAndUpdateConversation } from "@/lib/grading/engine";
 
 export async function POST(
   _req: NextRequest,
@@ -39,6 +40,14 @@ export async function POST(
     conversation.persona,
     messages.map((m) => ({ role: m.role, content: m.content }))
   );
+
+  // Grade the conversation (runs in parallel-ish — doesn't block the response)
+  gradeAndUpdateConversation(
+    session.user.id,
+    conversationId,
+    conversation.agentType,
+    conversation.persona
+  ).catch((err) => console.error("Grading error (non-blocking):", err));
 
   // Mark conversation as ended
   await prisma.conversation.update({

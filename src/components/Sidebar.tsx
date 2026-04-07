@@ -143,6 +143,14 @@ export function Sidebar({
 
       {/* Footer */}
       <div className="p-3 border-t border-slate-700">
+        {!isAdmin && (
+          <Link
+            href="/progress"
+            className="block w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-slate-800 text-cyan-300 mb-1"
+          >
+            My Progress
+          </Link>
+        )}
         {isAdmin && (
           <Link
             href="/admin"
