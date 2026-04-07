@@ -5,10 +5,10 @@ import { generateOtp, sendOtpEmail } from "@/lib/email";
 
 // Step 1: Register and send OTP
 export async function POST(req: NextRequest) {
-  const { email, password, name, course } = await req.json();
+  const { email, password, name, course, teamName } = await req.json();
 
-  if (!email || !password || !name) {
-    return Response.json({ error: "Missing required fields" }, { status: 400 });
+  if (!email || !password || !name || !teamName) {
+    return Response.json({ error: "Missing required fields (name, email, password, and team name are all required)" }, { status: 400 });
   }
 
   if (password.length < 6) {
@@ -35,6 +35,17 @@ export async function POST(req: NextRequest) {
     await prisma.user.delete({ where: { id: existing.id } });
   }
 
+  // Find or create team
+  const normalizedTeamName = teamName.trim().toLowerCase();
+  let team = await prisma.team.findFirst({
+    where: { name: normalizedTeamName, course: course || "558" },
+  });
+  if (!team) {
+    team = await prisma.team.create({
+      data: { name: normalizedTeamName, course: course || "558" },
+    });
+  }
+
   // Create unverified user
   const hashed = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
@@ -44,6 +55,7 @@ export async function POST(req: NextRequest) {
       name,
       role: "student",
       course: course || "558",
+      teamId: team.id,
       emailVerified: false,
     },
   });

@@ -1,8 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+
+interface TeamOption {
+  id: string;
+  name: string;
+  memberCount: number;
+}
 
 export default function RegisterPage() {
   const [step, setStep] = useState<"details" | "otp">("details");
@@ -10,11 +16,26 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [course, setCourse] = useState("558");
+  const [teamName, setTeamName] = useState("");
+  const [existingTeams, setExistingTeams] = useState<TeamOption[]>([]);
+  const [showNewTeam, setShowNewTeam] = useState(false);
   const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    loadTeams(course);
+  }, [course]);
+
+  async function loadTeams(c: string) {
+    const res = await fetch(`/api/teams?course=${c}`);
+    if (res.ok) {
+      const teams = await res.json();
+      setExistingTeams(teams);
+    }
+  }
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
@@ -25,7 +46,7 @@ export default function RegisterPage() {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, course }),
+        body: JSON.stringify({ name, email, password, course, teamName: teamName.trim().toLowerCase() }),
       });
 
       const data = await res.json();
@@ -164,12 +185,64 @@ export default function RegisterPage() {
                   </label>
                   <select
                     value={course}
-                    onChange={(e) => setCourse(e.target.value)}
+                    onChange={(e) => { setCourse(e.target.value); setTeamName(""); setShowNewTeam(false); }}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="558">BADM 558 (Graduate)</option>
                     <option value="358">BADM 358 (Undergraduate)</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Team Name
+                  </label>
+                  {!showNewTeam ? (
+                    <div className="space-y-2">
+                      <select
+                        value={teamName}
+                        onChange={(e) => {
+                          if (e.target.value === "__new__") {
+                            setShowNewTeam(true);
+                            setTeamName("");
+                          } else {
+                            setTeamName(e.target.value);
+                          }
+                        }}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      >
+                        <option value="">Select your team...</option>
+                        {existingTeams.map((t) => (
+                          <option key={t.id} value={t.name}>
+                            {t.name} ({t.memberCount} member{t.memberCount !== 1 ? "s" : ""})
+                          </option>
+                        ))}
+                        <option value="__new__">+ Create new team</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={teamName}
+                        onChange={(e) => setTeamName(e.target.value.toLowerCase())}
+                        placeholder="enter team name in all lowercase"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { setShowNewTeam(false); setTeamName(""); }}
+                        className="text-xs text-gray-500 hover:text-blue-600"
+                      >
+                        Back to existing teams
+                      </button>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-400 mt-1">
+                    Use the exact team name from Canvas, all lowercase
+                  </p>
                 </div>
 
                 <button
