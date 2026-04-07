@@ -38,7 +38,8 @@ model Team {
   course    String
   createdAt DateTime @default(now())
 
-  members User[]
+  members          User[]
+  leaderboardEntry LeaderboardEntry[]
 }
 
 model Conversation {
@@ -73,4 +74,30 @@ model StudentState {
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id])
+}
+
+model LeaderboardEntry {
+  id              String   @id @default(cuid())
+  teamId          String
+  course          String
+  baselineScore   Int      @default(0)
+  enhancedScore   Int      @default(0)
+  innovationScore Int      @default(0)
+  qualityMultiplier Float  @default(1.0)
+  finalScore      Float    @default(0)
+  scenarioResults String   @default("{}") // JSON: { "B1": { score: 5, passed: true }, ... }
+  auditedAt       DateTime?
+  auditNotes      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id])
+}
+
+model LeaderboardBonus {
+  id      String @id @default(cuid())
+  teamId  String
+  course  String
+  rank    Int
+  bonus   Int
 }

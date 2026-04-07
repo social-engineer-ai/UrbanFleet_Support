@@ -151,6 +151,12 @@ export function Sidebar({
             My Progress
           </Link>
         )}
+        <Link
+          href="/leaderboard"
+          className="block w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-slate-800 text-yellow-300 mb-1"
+        >
+          Leaderboard
+        </Link>
         {isAdmin && (
           <Link
             href="/admin"
