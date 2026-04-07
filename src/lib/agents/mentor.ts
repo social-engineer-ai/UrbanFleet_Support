@@ -1,4 +1,4 @@
-import { SOLUTION_ARCHITECTURE, COURSE_KNOWLEDGE_MAP, MENTOR_BEHAVIOR_ADDENDUM, SIMULATOR_INFO } from "./knowledge";
+import { SOLUTION_ARCHITECTURE, COURSE_KNOWLEDGE_MAP, MENTOR_BEHAVIOR_ADDENDUM, SIMULATOR_INFO, TRADEOFFS_GUIDE } from "./knowledge";
 import { StudentStateType } from "./state";
 
 export function buildMentorSystemPrompt(
@@ -320,6 +320,9 @@ ${MENTOR_BEHAVIOR_ADDENDUM}
 
 === DATA SIMULATOR TOOLS (share with students when they ask about test data) ===
 ${SIMULATOR_INFO}
+
+=== ARCHITECTURE TRADE-OFFS REFERENCE (for ADL review mode — use to probe decisions) ===
+${TRADEOFFS_GUIDE}
 
 === INTERNAL SOLUTION REFERENCE (NEVER share directly — use to guide and validate) ===
 ${SOLUTION_ARCHITECTURE}

@@ -287,3 +287,70 @@ Guide: Glue crawler (Week 7) → Athena queries → compliance scenario → cost
 Done when: Athena queries work, compliance answered in <15 min, cost documented.
 `;
 
+// Architecture trade-offs guide — used by Mentor during ADL review mode
+export const TRADEOFFS_GUIDE = `
+ARCHITECTURE TRADE-OFFS REFERENCE — Use this to probe students during ADL review.
+For each decision, know the options, trade-offs, and what good reasoning looks like.
+
+DECISION 1: KINESIS PARTITION KEY
+Options: vehicle_id (preserves per-vehicle ordering for idle detection, risk of hot shards) | Random key (even distribution, loses ordering) | record_type (only 2 values = terrible distribution)
+Good reasoning: "vehicle_id at 200 vehicles — distribution is even enough, ordering benefit outweighs hot shard risk. At 5000+ vehicles, we'd revisit."
+Probe: "What happens if one vehicle generates 10x more data? What if you had 5000 vehicles?"
+
+DECISION 2: LAMBDA BATCH SIZE & WINDOW
+Options: Batch 100/60s (good throughput, ≤60s latency) | Batch 10/5s (low latency, many more invocations, higher cost) | Batch 500/300s (max efficiency, 5min latency too slow for Elena)
+Good reasoning: "Batch 100/60s meets Elena's 2-minute alert target. 200 vehicles at ~1.2 records/sec = ~72 records per batch."
+Probe: "Elena wants alerts within 2 minutes. Does your batch window meet that? What if you cut it to 5 seconds — what happens to cost?"
+
+DECISION 3: S3 PARTITIONING STRATEGY
+Options: raw/gps/YYYY-MM-DD/ (date-based, fast daily queries) | raw/gps/vehicle_id/YYYY-MM-DD/ (vehicle-first, fast per-vehicle) | raw/gps/YYYY-MM-DD/HH/ (hourly, overkill for volume)
+Good reasoning: "Date partitioning matches our primary queries — daily reports, compliance by date range. Per-vehicle queries use WHERE clause, not partition."
+Probe: "James asks for all deliveries by VH-042 across a month. How does your partition strategy handle that? What does Athena scan?"
+
+DECISION 4: DEDUPLICATION STRATEGY
+Options: In-memory hash set within batch (simple, catches most dupes) | DynamoDB dedup table (cross-invocation, durable, adds cost/latency) | Deterministic S3 keys (natural idempotency, doesn't work for JSONL)
+Good reasoning: "In-memory hash is sufficient — simulator dupes are from immediate SDK retries, so they appear in the same batch. DynamoDB is overkill for our scale."
+Probe: "What if Kinesis redelivers an entire batch after a Lambda timeout? Your hash set is empty. Does that matter?"
+
+DECISION 5: S3 EVENT FAN-OUT STRATEGY
+Options: Multiple S3 event notifications with prefix filters (simple, direct) | S3 → SNS → multiple subscribers (decoupled, flexible) | S3 → EventBridge (most flexible, most complex)
+Good reasoning: "Two consumers (enrichment + anomaly detection). Direct S3 notifications are simplest. SNS adds a component we don't need yet."
+Probe: "What if Elena asks for a third type of processing next month? How do you add it?"
+CRITICAL: "What prefix filters do you have? What happens WITHOUT them?" (recursive trigger trap)
+
+DECISION 6: ERROR HANDLING — FAIL FAST vs GRACEFUL DEGRADATION
+Options: Crash on bad record (never process corrupt data, but one bad record kills entire batch) | Try/catch per record, route to malformed/ (pipeline keeps flowing, bad records preserved) | Dead letter queue (SQS for later reprocessing, more complex)
+Good reasoning: "Graceful degradation — field device data will always have quality issues. Crashing means crashing permanently. malformed/ prefix gives auditability."
+Probe: "What if a record has a valid format but wrong values — GPS coordinate 1000 miles away? Where do you draw the line?"
+
+DECISION 7: STEP FUNCTIONS DATA PASSING (558 only)
+Options: Pass full data between states (simple, but 256KB limit) | Pass S3 references (no limit, more I/O) | Pass summaries (compact, loses record-level detail)
+Good reasoning: "Summaries — per-driver stats fit under 256KB. KPI step only needs aggregates, not individual records."
+Probe: "What error did you get when you first tried passing data directly? How did you fix it?"
+
+DECISION 8: SLA THRESHOLD — FIXED vs DYNAMIC (558 only)
+Options: Fixed 95% (simple, matches contract) | Dynamic by conditions (realistic, complex, where does weather data come from?) | Percentile-based (self-adapting, cold start problem)
+Good reasoning: "Fixed 95% from the business brief. In production, dynamic thresholds would account for weather — but that's scope creep."
+Probe: "A 94.5% day during a snowstorm — is that good or bad? How would your system know?"
+
+DECISION 9: GLUE CRAWLER FREQUENCY
+Options: Daily scheduled (predictable cost, up to 24h lag) | Hourly (24x cost, most runs find nothing) | On-demand after pipeline (most efficient, slight complexity) | Event-driven per file (responsive, expensive for small files)
+Good reasoning: "On-demand after daily pipeline. James queries past events — never data from 5 minutes ago. One crawl after the pipeline ensures next-morning queryability."
+Probe: "How much does each crawler run cost? If you ran it every hour, what's the monthly impact?"
+
+CORE CONCEPTS TO PROBE (if student's reasoning is shallow):
+- Latency vs Throughput: "You optimized for throughput. What did that cost in latency? Is Elena okay with that?"
+- Cost vs Performance: "What's the minimum configuration that meets the requirement? Why not bigger? Why not smaller?"
+- Simplicity vs Flexibility: "This is simple now. What breaks if requirements change?"
+- Correctness vs Completeness: "For James (compliance), which matters more — every record present, or every record accurate?"
+- Coupling: "If you change Lambda A, does Lambda B break? Why or why not?"
+- Blast Radius: "If this Lambda crashes, what else stops working?"
+
+ADL QUALITY CHECKLIST — remind students they need at least 6 decisions with:
+1. The decision (what you chose)
+2. Alternatives considered (what else you could have done)
+3. Why this choice (connected to business requirements)
+4. Trade-off accepted (what you gave up, when you'd revisit)
+`;
+
+
