@@ -4,19 +4,19 @@ import { getStudentState, updateStudentState, StudentStateType } from "../agents
 
 const anthropic = new Anthropic();
 
-// Rubric criteria with max points
+// Individual rubric: 100 points total across 6 dimensions
+// These are evaluated per-conversation and aggregated across all conversations
+
 const CLIENT_RUBRIC = {
-  requirements_elicitation: { max: 20, description: "Did the student ask the right questions? Probe for hidden requirements?" },
-  solution_presentation: { max: 25, description: "When presenting to the client, did the student explain in business terms? Connect features to stakeholder needs?" },
-  handling_pushback: { max: 20, description: "When challenged, did the student defend coherently, adapt, or collapse?" },
-  business_awareness: { max: 15, description: "Did the student proactively address cost, compliance, operations, or scaling?" },
+  stakeholder_engagement: { max: 15, description: "Did the student engage meaningfully with this stakeholder? Ask relevant questions? Show preparation?" },
+  requirements_discovery: { max: 15, description: "Did the student uncover key requirements? Probe for hidden information? Ask follow-up questions when given partial answers?" },
+  solution_presentation: { max: 15, description: "When presenting a solution, did the student explain in business terms the stakeholder understands? Connect features to this stakeholder's specific needs?" },
 };
 
 const MENTOR_RUBRIC = {
-  question_quality: { max: 25, description: "Architectural thinking vs 'give me the syntax.' Ratio of design questions to mechanical questions." },
-  reflection_depth: { max: 40, description: "Percentage of hints where student demonstrated deep or medium reflection. Weighted by hint importance." },
-  iteration: { max: 30, description: "When challenged on approach or shown a flaw, did the student adapt their thinking?" },
-  independence_growth: { max: 25, description: "Are later conversations more self-sufficient? Fewer Level 3 hints? More architectural questions?" },
+  question_quality: { max: 15, description: "Are questions architectural ('Should I partition by vehicle or date? What are the trade-offs?') or mechanical ('What's the boto3 syntax?')? Design thinking scores higher." },
+  reflection_depth: { max: 20, description: "After receiving hints, does the student explain the concept in their own words, connect it to their specific project, and identify trade-offs or edge cases? Or do they just say 'ok got it'?" },
+  growth_and_iteration: { max: 20, description: "Does the student adapt when challenged? Are they more self-sufficient than in earlier sessions? Do they need fewer Level 3 hints? Do they propose approaches before asking for validation?" },
 };
 
 interface GradeResult {

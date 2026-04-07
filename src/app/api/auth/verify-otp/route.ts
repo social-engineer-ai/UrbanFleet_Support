@@ -70,17 +70,15 @@ export async function POST(req: NextRequest) {
     debug_log: [],
     conversation_scores: {
       client: {
-        requirements_elicitation: 0,
+        stakeholder_engagement: 0,
+        requirements_discovery: 0,
         solution_presentation: 0,
-        handling_pushback: 0,
-        business_awareness: 0,
         total_meetings: 0,
       },
       mentor: {
         question_quality: 0,
         reflection_depth: 0,
-        iteration: 0,
-        independence_growth: 0,
+        growth_and_iteration: 0,
         total_sessions: 0,
       },
     },

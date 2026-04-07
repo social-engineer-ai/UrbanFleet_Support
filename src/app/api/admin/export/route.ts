@@ -36,17 +36,15 @@ export async function GET() {
     "Phase 2 Status",
     "Phase 3 Status",
     "Phase 4 Status",
-    "Requirements Elicitation (20)",
-    "Solution Presentation (25)",
-    "Handling Pushback (20)",
-    "Business Awareness (15)",
-    "Client Total (80)",
-    "Question Quality (25)",
-    "Reflection Depth (40)",
-    "Iteration (30)",
-    "Independence Growth (25)",
-    "Mentor Total (120)",
-    "Grand Total (200)",
+    "Stakeholder Engagement (15)",
+    "Requirements Discovery (15)",
+    "Solution Presentation (15)",
+    "Client Subtotal (45)",
+    "Question Quality (15)",
+    "Reflection Depth (20)",
+    "Growth & Iteration (20)",
+    "Mentor Subtotal (55)",
+    "Individual Total (100)",
     "Deep Reflections",
     "Medium Reflections",
     "Shallow Reflections",
@@ -64,10 +62,10 @@ export async function GET() {
     const reqCount = Object.values(reqs).filter((r: unknown) => (r as { discovered: boolean }).discovered).length;
     const decisionCount = (state?.architecture_decisions || []).length;
 
-    const clientTotal = (cs.requirements_elicitation || 0) + (cs.solution_presentation || 0) +
-      (cs.handling_pushback || 0) + (cs.business_awareness || 0);
+    const clientTotal = (cs.stakeholder_engagement || 0) + (cs.requirements_discovery || 0) +
+      (cs.solution_presentation || 0);
     const mentorTotal = (ms.question_quality || 0) + (ms.reflection_depth || 0) +
-      (ms.iteration || 0) + (ms.independence_growth || 0);
+      (ms.growth_and_iteration || 0);
 
     const clientMsgs = s.conversations.filter((c) => c.agentType === "client");
     const mentorMsgs = s.conversations.filter((c) => c.agentType === "mentor");
@@ -87,15 +85,13 @@ export async function GET() {
       bp.phase_2?.status || "not_started",
       bp.phase_3?.status || "not_started",
       bp.phase_4?.status || "not_started",
-      cs.requirements_elicitation || 0,
+      cs.stakeholder_engagement || 0,
+      cs.requirements_discovery || 0,
       cs.solution_presentation || 0,
-      cs.handling_pushback || 0,
-      cs.business_awareness || 0,
       clientTotal,
       ms.question_quality || 0,
       ms.reflection_depth || 0,
-      ms.iteration || 0,
-      ms.independence_growth || 0,
+      ms.growth_and_iteration || 0,
       mentorTotal,
       clientTotal + mentorTotal,
       hints.filter((h: { reflection_quality: string }) => h.reflection_quality === "deep").length,

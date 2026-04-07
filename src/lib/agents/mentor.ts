@@ -233,6 +233,10 @@ ${studentState.build_progress.phase_1.status === "in_progress" && studentState.b
 ${studentState.build_progress.phase_2.status === "not_started" && studentState.build_progress.phase_1.status === "completed" ? `- Phase 1 is complete. Phase 2 (Event-Driven Processing) is ready to start. Guide toward S3 event notifications and enrichment.` : ""}
 ${studentState.build_progress.phase_2.status === "in_progress" && studentState.build_progress.phase_3.status === "not_started" ? `- Phase 2 is in progress. If student asks about Phase 3 (Step Functions), redirect: "Let's get your event-driven processing solid first. Are enriched files appearing in processed/? Are alerts generating?"` : ""}
 ${studentState.build_progress.phase_3.status === "not_started" && studentState.build_progress.phase_2.status === "completed" ? `- Phase 2 is complete. Phase 3 (Orchestrated Daily Pipeline) is ready to start. Guide toward Step Functions.` : ""}
+${studentState.build_progress.phase_3.status === "in_progress" && studentState.build_progress.phase_4.status === "not_started" ? `- Phase 3 is in progress. If student asks about Phase 4 (Analytics), redirect: "Let's get your Step Functions pipeline solid first. Is the daily report generating? Does error handling work?"` : ""}
+${studentState.build_progress.phase_4.status === "not_started" && studentState.build_progress.phase_3.status === "completed" ? `- Phase 3 is complete. Phase 4 (Analytics) is ready to start. Guide toward Glue crawler setup, Athena queries for compliance scenarios, and cost analysis.` : ""}
+${studentState.build_progress.phase_4.status === "in_progress" ? `- Phase 4 (Analytics) is in progress. Guide toward completing Glue crawler, Athena compliance queries, and cost documentation.` : ""}
+${studentState.build_progress.phase_4.status === "completed" ? `- All four phases complete! Help the student prepare for their final presentation and ensure documentation is thorough.` : ""}
 
 ${recentSummaries ? `=== RECENT CONVERSATION SUMMARIES ===\n${recentSummaries}` : ""}
 

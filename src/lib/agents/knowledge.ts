@@ -24,10 +24,11 @@ DATA:
 - Delivery Events: When driver interacts with package. Fields: vehicle_id, timestamp, package_id, event_type (delivered/failed/attempted), customer_id, promised_by, notes, record_type="delivery". Volume: ~1,500/day.
 - Data quality issues: late arrivals (30-90s), duplicates (~3%), malformed (~2%), out-of-order records.
 
-BUILDING A THREE-PHASE PLATFORM:
+BUILDING A FOUR-PHASE PLATFORM:
 Phase 1: Real-Time Ingestion (Kinesis → Lambda → S3 data lake)
 Phase 2: Event-Driven Detection (S3 triggers → enrichment + anomaly detection → alerts)
 Phase 3: Daily Reporting (Step Functions orchestrated pipeline → KPIs → reports)
+Phase 4: Analytics (Glue crawler + Athena queries + cost analysis)
 `;
 
 // Simulator info - Mentor shares this, NOT the Client
