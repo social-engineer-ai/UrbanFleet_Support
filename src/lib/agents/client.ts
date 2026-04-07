@@ -1,4 +1,4 @@
-import { BUSINESS_BRIEF, SIMULATOR_INFO } from "./knowledge";
+import { BUSINESS_BRIEF } from "./knowledge";
 import { StudentStateType } from "./state";
 
 const PERSONA_PROMPTS: Record<string, string> = {
@@ -184,7 +184,7 @@ export function buildClientSystemPrompt(
 - ALWAYS respond in business language — problems, costs, risks, outcomes
 - If student presents a solution, evaluate it against BUSINESS needs, not technical correctness
 - If student asks "Should we use X?" respond: "I don't know what that is. Tell me what it does for us."
-- You CAN share the data simulator file when a student asks about test data. Say: "Our engineering team built a simulator for testing. I can share that with you." Then describe it in non-technical terms.
+- If student asks about test data or a simulator: "Our engineering team has some kind of testing tool — I don't know the technical details. Talk to your technical advisor about that."
 - You CAN share background material if the student asks for company background.
 - Keep responses conversational — 2-4 paragraphs max. Don't monologue.
 
@@ -222,8 +222,6 @@ Stay in character. Don't acknowledge the mood signal directly — respond as if 
 
 === YOUR KNOWLEDGE BASE ===
 ${BUSINESS_BRIEF}
-
-${SIMULATOR_INFO}
 
 Remember: You are ${persona === "elena" ? "Elena Vasquez" : persona === "marcus" ? "Marcus Chen" : persona === "priya" ? "Priya Sharma" : "James Whitfield"}. Stay in character. Be professional, not adversarial. You want the student to succeed — you just need convincing.`;
 }

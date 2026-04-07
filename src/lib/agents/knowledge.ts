@@ -30,24 +30,44 @@ Phase 2: Event-Driven Detection (S3 triggers → enrichment + anomaly detection 
 Phase 3: Daily Reporting (Step Functions orchestrated pipeline → KPIs → reports)
 `;
 
-// Simulator file info - Client can share this
+// Simulator info - Mentor shares this, NOT the Client
 export const SIMULATOR_INFO = `
-The engineering team built a data simulator for testing. It's a Python script called urbanfleet_simulator.py that generates realistic GPS pings and delivery events and pushes them to a Kinesis Data Stream.
+TWO DATA TOOLS ARE AVAILABLE FOR STUDENTS:
 
-Usage:
-  python urbanfleet_simulator.py                         # defaults
-  python urbanfleet_simulator.py --vehicles 50 --duration 300
-  python urbanfleet_simulator.py --stream my-stream-name --region us-east-1
+1. urbanfleet_sample_data.py — SAMPLE DATA VIEWER (no AWS needed)
+   This script generates sample GPS pings and delivery events and saves them locally.
+   Students should use this FIRST to understand what the data looks like before touching AWS.
 
-Arguments:
-  --stream      Kinesis stream name (default: urbanfleet-stream)
-  --region      AWS region (default: us-east-1)
-  --vehicles    Number of vehicles to simulate (default: 20)
-  --duration    How long to run in seconds (default: 300 = 5 min)
-  --speed       Simulation speed multiplier (default: 1.0, use 3.0 for faster)
-  --chaos       Chaos level 0-3: 0=clean, 1=some issues, 2=realistic, 3=nasty (default: 2)
+   Usage:
+     python urbanfleet_sample_data.py                      # prints sample records to screen
+     python urbanfleet_sample_data.py --output data/       # saves to files (JSONL format)
+     python urbanfleet_sample_data.py --chaos 0            # clean data
+     python urbanfleet_sample_data.py --chaos 2            # realistic messy data
 
-The simulator intentionally produces late-arriving records, duplicates, malformed records, and out-of-order delivery. These are features, not bugs — the pipeline must handle them.
+   This does NOT require AWS credentials or a Kinesis stream.
+
+2. urbanfleet_simulator.py — KINESIS PRODUCER (requires AWS)
+   Once students have their Kinesis stream set up, this script sends data to it.
+   Students need to specify THEIR OWN stream name:
+
+   Usage:
+     python urbanfleet_simulator.py --stream YOUR-STREAM-NAME --region us-east-1
+     python urbanfleet_simulator.py --stream YOUR-STREAM-NAME --vehicles 10 --duration 120
+
+   This REQUIRES: AWS credentials configured, a Kinesis stream already created.
+
+RECOMMENDED SEQUENCE:
+1. Run urbanfleet_sample_data.py locally to see the data format
+2. Create your Kinesis stream in AWS
+3. Run urbanfleet_simulator.py with YOUR stream name to send data
+
+Both scripts support --chaos levels 0-3:
+  0 = clean data (no issues — start here)
+  1 = some late arrivals and duplicates
+  2 = realistic (late, dupes, malformed, out-of-order)
+  3 = nasty (garbled records added)
+
+The messy data is intentional — your pipeline must handle it gracefully.
 `;
 
 // Solution architecture - loaded into Mentor agent context (NEVER shown to students)

@@ -1,4 +1,4 @@
-import { SOLUTION_ARCHITECTURE, COURSE_KNOWLEDGE_MAP, MENTOR_BEHAVIOR_ADDENDUM } from "./knowledge";
+import { SOLUTION_ARCHITECTURE, COURSE_KNOWLEDGE_MAP, MENTOR_BEHAVIOR_ADDENDUM, SIMULATOR_INFO } from "./knowledge";
 import { StudentStateType } from "./state";
 
 export function buildMentorSystemPrompt(
@@ -255,6 +255,9 @@ Respond naturally — don't say "I see you clicked the frustrated button." Treat
 ${COURSE_KNOWLEDGE_MAP}
 
 ${MENTOR_BEHAVIOR_ADDENDUM}
+
+=== DATA SIMULATOR TOOLS (share with students when they ask about test data) ===
+${SIMULATOR_INFO}
 
 === INTERNAL SOLUTION REFERENCE (NEVER share directly — use to guide and validate) ===
 ${SOLUTION_ARCHITECTURE}
