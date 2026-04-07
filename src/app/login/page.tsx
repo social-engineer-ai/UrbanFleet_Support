@@ -26,21 +26,41 @@ function LoginForm() {
         email,
         password,
         redirect: false,
+        callbackUrl: "/chat",
       });
 
-      if (result?.error) {
+      if (!result) {
+        setError("No response from authentication. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      if (result.error) {
         if (result.error.includes("EMAIL_NOT_VERIFIED")) {
           setError("Please verify your email first. Check your inbox for the verification code.");
+        } else if (result.error === "CredentialsSignin") {
+          setError("Invalid email or password. Please check and try again.");
         } else {
-          setError("Invalid email or password. Please try again.");
+          setError("Sign in failed. Please try again.");
         }
         setLoading(false);
+      } else if (result.url) {
+        router.push(result.url);
+        router.refresh();
       } else {
         router.push("/chat");
         router.refresh();
       }
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err) {
+      // NextAuth v5 beta may throw instead of returning error object
+      const message = err instanceof Error ? err.message : "Unknown error";
+      if (message.includes("EMAIL_NOT_VERIFIED")) {
+        setError("Please verify your email first.");
+      } else if (message.includes("CredentialsSignin")) {
+        setError("Invalid email or password.");
+      } else {
+        setError("Invalid email or password. Please try again.");
+      }
       setLoading(false);
     }
   }
