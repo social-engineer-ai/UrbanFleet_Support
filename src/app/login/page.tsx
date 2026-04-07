@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
+import { PasswordInput } from "@/components/PasswordInput";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -20,27 +21,32 @@ function LoginForm() {
     setLoading(true);
     setError("");
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
+    try {
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
 
-    if (result?.error) {
-      if (result.error.includes("EMAIL_NOT_VERIFIED")) {
-        setError("Please verify your email first. Check your inbox for the verification code.");
+      if (result?.error) {
+        if (result.error.includes("EMAIL_NOT_VERIFIED")) {
+          setError("Please verify your email first. Check your inbox for the verification code.");
+        } else {
+          setError("Invalid email or password. Please try again.");
+        }
+        setLoading(false);
       } else {
-        setError("Invalid email or password");
+        router.push("/chat");
+        router.refresh();
       }
+    } catch {
+      setError("Something went wrong. Please try again.");
       setLoading(false);
-    } else {
-      router.push("/chat");
-      router.refresh();
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-white">StakeholderSim</h1>
@@ -81,13 +87,7 @@ function LoginForm() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Password
               </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
+              <PasswordInput value={password} onChange={setPassword} />
             </div>
 
             <button
