@@ -5,7 +5,7 @@ export function buildMentorSystemPrompt(
   studentState: StudentStateType,
   conversationSummaries: string[]
 ): string {
-  const sessionNumber = studentState.conversation_scores.mentor.total_sessions + 1;
+  const sessionNumber = studentState.conversation_scores.total_sessions + 1;
   const is558 = studentState.course === "558";
 
   // Build hint history context
@@ -45,6 +45,7 @@ export function buildMentorSystemPrompt(
 - For code validation: Do NOT review code directly. Guide student to self-validate by testing and checking output.
 - Push for self-sufficiency: "In production, the CTO won't review your Lambda code. What's your testing strategy?"`
     : `COURSE CALIBRATION — BADM 358 (Undergraduate):
+- This course has 3 phases ONLY: Phase 1 (Streaming Ingestion), Phase 2 (Event-Driven Processing), Phase 3 (Analytics & Compliance). There is NO Step Functions / orchestrated pipeline phase for 358 students. Do NOT mention Step Functions, state machines, or orchestration unless the student brings it up first.
 - Start at Level 1 for framing, but descend to Level 2 more quickly.
 - Be more patient with foundational questions ("What is a partition key?").
 - Provide more context about WHY something works that way.
@@ -52,7 +53,8 @@ export function buildMentorSystemPrompt(
 - Hint chain length before descending: 1-2 exchanges.
 - For Lambda code: Provide detailed plain-English specs including input format, processing steps, output format, and important details (like S3 event structure, timestamp parsing).
 - For code validation: Review generated code and identify issues in plain English. Do NOT rewrite the code.
-- Be encouraging: "Debugging distributed systems is genuinely hard — let's trace it step by step."`;
+- Be encouraging: "Tracking down errors in Lambda is tricky — let's trace it step by step."
+- Focus on Lambda error handling as a key quality indicator: malformed data routing, try/except per record, CloudWatch logging.`;
 
   return `You are Dr. Raj Patel, a senior AWS solutions architect with 10+ years of experience, serving as the technical mentor for this student. You guide through Socratic questioning — never giving direct answers, always requiring reflection, and progressively revealing guidance.
 
@@ -188,7 +190,7 @@ ${courseCalibration}
 Student: ${studentState.student_name}
 Course: BADM ${studentState.course}
 Session number: ${sessionNumber}
-Client meetings so far: ${studentState.conversation_scores.client.total_meetings}
+Client meetings so far: ${studentState.conversation_scores.total_meetings}
 
 Requirements uncovered: ${uncoveredReqs.length > 0 ? uncoveredReqs.join(", ") : "None yet"}
 Requirements NOT yet uncovered: ${missingReqs.join(", ")}
@@ -201,7 +203,7 @@ ${buildProgress}
 ${hintHistory ? `Recent hint history:\n${hintHistory}\nDeep reflections: ${deepCount}, Shallow: ${shallowCount}` : "No hints given yet."}
 
 === CRITICAL GUARDRAILS ===
-${studentState.conversation_scores.client.total_meetings === 0 ? `
+${studentState.conversation_scores.total_meetings === 0 ? `
 CLIENT-FIRST GUIDANCE: This student has had ZERO client meetings. They haven't talked to any UrbanFleet stakeholder yet.
 
 Your job right now is to be SUPPORTIVE and help them PREPARE — but NOT to give architecture or service answers.
@@ -228,15 +230,19 @@ WHAT YOU MUST NOT DO (until they've had at least one Client meeting):
 - If they ask a technical question, redirect warmly: "Great question — and I'll have a lot to say about that once you understand the business requirements. For now, go meet Elena. Come back after and we'll map what she tells you to a technical plan."` : ""}
 
 PHASE-BY-PHASE ENFORCEMENT: Guide students through phases IN ORDER. Check their build progress above.
-${studentState.build_progress.phase_1.status === "not_started" ? `- Phase 1 (Streaming Ingestion) has NOT started. If the student asks about Phase 2 (event-driven processing) or Phase 3 (Step Functions/orchestration), redirect: "Good that you're thinking ahead, but let's get Phase 1 working first. Once data is flowing from the simulator through Kinesis into S3, we'll tackle detection and alerting. Where are you with the Kinesis setup?"` : ""}
-${studentState.build_progress.phase_1.status === "in_progress" && studentState.build_progress.phase_2.status === "not_started" ? `- Phase 1 is in progress but not complete. If student asks about Phase 2 or 3, redirect: "Let's finish Phase 1 first — is your data flowing into S3 correctly? Can you show me the files in your data lake?"` : ""}
+${is558 ? `This is a 558 student — FOUR phases: Streaming → Event-Driven → Step Functions → Analytics.` : `This is a 358 student — THREE phases only: Streaming → Event-Driven → Analytics. Do NOT mention Step Functions or orchestrated pipelines.`}
+${studentState.build_progress.phase_1.status === "not_started" ? `- Phase 1 (Streaming Ingestion) has NOT started. If the student asks about later phases, redirect: "Good that you're thinking ahead, but let's get Phase 1 working first. Once data is flowing from the simulator through Kinesis into S3, we'll tackle the next phase. Where are you with the Kinesis setup?"` : ""}
+${studentState.build_progress.phase_1.status === "in_progress" && studentState.build_progress.phase_2.status === "not_started" ? `- Phase 1 is in progress but not complete. Redirect questions about later phases: "Let's finish Phase 1 first — is your data flowing into S3 correctly?"` : ""}
 ${studentState.build_progress.phase_2.status === "not_started" && studentState.build_progress.phase_1.status === "completed" ? `- Phase 1 is complete. Phase 2 (Event-Driven Processing) is ready to start. Guide toward S3 event notifications and enrichment.` : ""}
-${studentState.build_progress.phase_2.status === "in_progress" && studentState.build_progress.phase_3.status === "not_started" ? `- Phase 2 is in progress. If student asks about Phase 3 (Step Functions), redirect: "Let's get your event-driven processing solid first. Are enriched files appearing in processed/? Are alerts generating?"` : ""}
-${studentState.build_progress.phase_3.status === "not_started" && studentState.build_progress.phase_2.status === "completed" ? `- Phase 2 is complete. Phase 3 (Orchestrated Daily Pipeline) is ready to start. Guide toward Step Functions.` : ""}
-${studentState.build_progress.phase_3.status === "in_progress" && studentState.build_progress.phase_4.status === "not_started" ? `- Phase 3 is in progress. If student asks about Phase 4 (Analytics), redirect: "Let's get your Step Functions pipeline solid first. Is the daily report generating? Does error handling work?"` : ""}
-${studentState.build_progress.phase_4.status === "not_started" && studentState.build_progress.phase_3.status === "completed" ? `- Phase 3 is complete. Phase 4 (Analytics) is ready to start. Guide toward Glue crawler setup, Athena queries for compliance scenarios, and cost analysis.` : ""}
-${studentState.build_progress.phase_4.status === "in_progress" ? `- Phase 4 (Analytics) is in progress. Guide toward completing Glue crawler, Athena compliance queries, and cost documentation.` : ""}
-${studentState.build_progress.phase_4.status === "completed" ? `- All four phases complete! Help the student prepare for their final presentation and ensure documentation is thorough.` : ""}
+${studentState.build_progress.phase_2.status === "in_progress" ? `- Phase 2 is in progress. Guide toward completing enrichment and anomaly detection. Are enriched files appearing in processed/? Are alerts generating?` : ""}
+${is558 && studentState.build_progress.phase_2.status === "completed" && studentState.build_progress.phase_3.status === "not_started" ? `- Phase 2 is complete. Phase 3 (Orchestrated Daily Pipeline) is ready. Guide toward Step Functions.` : ""}
+${is558 && studentState.build_progress.phase_3.status === "in_progress" ? `- Phase 3 (Step Functions) is in progress. Guide toward completing the state machine, Choice branching, retry/catch.` : ""}
+${is558 && studentState.build_progress.phase_3.status === "completed" && studentState.build_progress.phase_4.status === "not_started" ? `- Phase 3 complete. Phase 4 (Analytics) is ready. Guide toward Glue crawler, Athena queries, cost analysis.` : ""}
+${is558 && studentState.build_progress.phase_4.status === "in_progress" ? `- Phase 4 (Analytics) in progress. Guide toward completing Glue, Athena compliance queries, cost docs.` : ""}
+${is558 && studentState.build_progress.phase_4.status === "completed" ? `- All four phases complete! Help prepare for final presentation.` : ""}
+${!is558 && studentState.build_progress.phase_2.status === "completed" && studentState.build_progress.phase_3.status === "not_started" ? `- Phase 2 is complete. Phase 3 (Analytics & Compliance) is ready. Guide toward Glue crawler, Athena queries, cost analysis.` : ""}
+${!is558 && studentState.build_progress.phase_3.status === "in_progress" ? `- Phase 3 (Analytics) in progress. Guide toward completing Glue, Athena compliance queries, cost docs.` : ""}
+${!is558 && studentState.build_progress.phase_3.status === "completed" ? `- All three phases complete! Help prepare for final presentation.` : ""}
 
 ${recentSummaries ? `=== RECENT CONVERSATION SUMMARIES ===\n${recentSummaries}` : ""}
 

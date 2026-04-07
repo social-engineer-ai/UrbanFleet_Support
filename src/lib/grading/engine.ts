@@ -4,23 +4,14 @@ import { getStudentState, updateStudentState, StudentStateType } from "../agents
 
 const anthropic = new Anthropic();
 
-// Individual rubric: 100 points total across 6 dimensions
-// These are evaluated per-conversation and aggregated across all conversations
-
-const CLIENT_RUBRIC = {
-  stakeholder_engagement: { max: 15, description: "Did the student engage meaningfully with this stakeholder? Ask relevant questions? Show preparation?" },
-  requirements_discovery: { max: 15, description: "Did the student uncover key requirements? Probe for hidden information? Ask follow-up questions when given partial answers?" },
-  solution_presentation: { max: 15, description: "When presenting a solution, did the student explain in business terms the stakeholder understands? Connect features to this stakeholder's specific needs?" },
-};
-
-const MENTOR_RUBRIC = {
-  question_quality: { max: 15, description: "Are questions architectural ('Should I partition by vehicle or date? What are the trade-offs?') or mechanical ('What's the boto3 syntax?')? Design thinking scores higher." },
-  reflection_depth: { max: 20, description: "After receiving hints, does the student explain the concept in their own words, connect it to their specific project, and identify trade-offs or edge cases? Or do they just say 'ok got it'?" },
-  growth_and_iteration: { max: 20, description: "Does the student adapt when challenged? Are they more self-sufficient than in earlier sessions? Do they need fewer Level 3 hints? Do they propose approaches before asking for validation?" },
-};
+// New rubric: Engagement (50) + Problem Understanding (30) + Solution Explanation (20) = 100
+// Engagement: 10 pts per role (Elena, Marcus, Priya, James, Mentor)
+// Understanding: 5 pts per stakeholder (20) + 10 pts mentor quality
+// Explanation: 5 pts per stakeholder (20) — Finals Assessment only
 
 interface GradeResult {
   criterion: string;
+  persona: string;
   score: number;
   maxScore: number;
   evidence: string[];
@@ -38,58 +29,75 @@ export async function gradeConversation(
     orderBy: { timestamp: "asc" },
   });
 
-  if (messages.length < 4) return []; // Too short to grade
+  if (messages.length < 4) return [];
 
   const state = await getStudentState(userId);
   const transcript = messages
     .map((m) => `${m.role === "user" ? "STUDENT" : "AGENT"}: ${m.content}`)
     .join("\n\n");
 
-  const rubric = agentType === "client" ? CLIENT_RUBRIC : MENTOR_RUBRIC;
-  const rubricDescription = Object.entries(rubric)
-    .map(([key, val]) => `- ${key} (max ${val.max} points): ${val.description}`)
-    .join("\n");
+  const personaName = persona || "mentor";
+  const isMentor = agentType === "mentor";
+  const isFinalsAssessment = state.conversation_scores.assessment_phase === "finals";
 
-  const gradingPrompt = `You are a grading assistant for a graduate-level Big Data Infrastructure course. Evaluate this student's conversation against the rubric criteria below.
+  const gradingPrompt = `You are a grading assistant for a Big Data Infrastructure course. Evaluate this ${agentType} conversation with ${personaName}.
 
-IMPORTANT: Be fair and evidence-based. Quote specific student statements as evidence. Grade on a curve where:
-- 80-100% = excellent, demonstrates genuine mastery
-- 60-80% = good, solid understanding with minor gaps
-- 40-60% = developing, shows effort but significant gaps
-- 20-40% = needs improvement, surface-level engagement
-- 0-20% = minimal engagement or off-track
-
-STUDENT CONTEXT:
-- Name: ${state.student_name}
-- Course: BADM ${state.course}
-- Meeting/session number: ${agentType === "client" ? state.conversation_scores.client.total_meetings : state.conversation_scores.mentor.total_sessions}
-- Requirements discovered so far: ${Object.entries(state.requirements_uncovered).filter(([, v]) => v.discovered).map(([k]) => k).join(", ") || "none"}
-
-RUBRIC CRITERIA:
-${rubricDescription}
+STUDENT: ${state.student_name} (BADM ${state.course})
+ASSESSMENT PHASE: ${isFinalsAssessment ? "Finals Assessment (in-class presentation)" : "Build Phase (ongoing project work)"}
 
 <transcript>
 ${transcript}
 </transcript>
 
-For EACH criterion in the rubric, return a JSON object in this exact format:
+Grade the following criteria. Return a JSON object with "grades" array:
+
+${!isMentor ? `
+1. ENGAGEMENT (max 10 pts) — Did the student engage meaningfully?
+   9-10: Multi-turn conversation, asked questions, responded to concerns, stayed through a full cycle
+   6-8: Engaged but briefly, touched on concern but didn't fully explore
+   3-5: Minimal — single superficial exchange
+   0-2: Didn't engage or said hello and left
+
+2. PROBLEM UNDERSTANDING (max 5 pts) — Does the student understand this stakeholder's core concern?
+   Only score if engagement >= 3. Otherwise 0.
+   4-5: Articulates the stakeholder's core problem with specifics and nuance
+   2-3: Understands generally but misses an element
+   0-1: Only vague sense of the problem
+
+${isFinalsAssessment ? `3. SOLUTION EXPLANATION (max 5 pts) — Can the student explain their solution in this stakeholder's language?
+   Only score during Finals Assessment.
+   4-5: Explains clearly in business terms, connects to stakeholder's specific needs
+   2-3: Adequate but somewhat technical or missing an element
+   0-1: Raw technical terms, stakeholder would be confused` : ""}
+` : `
+1. ENGAGEMENT (max 10 pts) — Did the student engage meaningfully with the Mentor?
+   9-10: Multi-turn, asked questions, shared thinking, stayed through hint-reflection cycles
+   6-8: Engaged but briefly
+   3-5: Minimal interaction
+   0-2: Didn't engage
+
+2. MENTOR QUALITY (max 10 pts) — Quality of interaction with the Mentor
+   Only score if engagement >= 3.
+   Question Quality (3 pts): Architectural/trade-off questions (3) vs mechanical "how do I" (1)
+   Initial Thinking (3 pts): Shares hypothesis before asking (3) vs "what should I do?" (1)
+   Reflection Quality (4 pts): Restates, connects to project, identifies trade-offs (4) vs "ok got it" (1)
+`}
+
+Return JSON:
 {
   "grades": [
-    {
-      "criterion": "criterion_key",
-      "score": <number 0 to max>,
-      "evidence": ["direct quote 1 from student", "direct quote 2"],
-      "reasoning": "1-2 sentence explanation of why this score"
-    }
+    { "criterion": "engagement", "persona": "${personaName}", "score": <0-10>, "evidence": ["quote"], "reasoning": "why" },
+    ${!isMentor ? `{ "criterion": "problem_understanding", "persona": "${personaName}", "score": <0-5>, "evidence": ["quote"], "reasoning": "why" }` : `{ "criterion": "mentor_quality", "persona": "mentor", "score": <0-10>, "evidence": ["quote"], "reasoning": "why" }`}
+    ${!isMentor && isFinalsAssessment ? `,{ "criterion": "solution_explanation", "persona": "${personaName}", "score": <0-5>, "evidence": ["quote"], "reasoning": "why" }` : ""}
   ]
 }
 
-Grade ONLY the criteria relevant to this ${agentType} conversation. Return valid JSON only.`;
+Return valid JSON only.`;
 
   try {
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
+      max_tokens: 1500,
       messages: [{ role: "user", content: gradingPrompt }],
     });
 
@@ -98,16 +106,14 @@ Grade ONLY the criteria relevant to this ${agentType} conversation. Return valid
     if (!jsonMatch) return [];
 
     const result = JSON.parse(jsonMatch[0]);
-    const rubricAny = rubric as Record<string, { max: number; description: string }>;
-    const grades: GradeResult[] = (result.grades || []).map((g: { criterion: string; score: number; evidence: string[]; reasoning: string }) => ({
+    return (result.grades || []).map((g: { criterion: string; persona: string; score: number; evidence: string[]; reasoning: string }) => ({
       criterion: g.criterion,
-      score: Math.min(g.score, rubricAny[g.criterion]?.max || 0),
-      maxScore: rubricAny[g.criterion]?.max || 0,
+      persona: g.persona || personaName,
+      score: g.score,
+      maxScore: g.criterion === "engagement" ? 10 : g.criterion === "mentor_quality" ? 10 : 5,
       evidence: g.evidence || [],
       reasoning: g.reasoning || "",
     }));
-
-    return grades;
   } catch (error) {
     console.error("Grading error:", error);
     return [];
@@ -121,33 +127,36 @@ export async function updateStudentScores(
   grades: GradeResult[]
 ): Promise<void> {
   const state = await getStudentState(userId);
-
-  // Use rolling average: blend new scores with existing (weighted toward more recent)
-  const isClient = agentType === "client";
-  const scoreSection = isClient
-    ? state.conversation_scores.client
-    : state.conversation_scores.mentor;
-  const scoreSectionAny = scoreSection as Record<string, number>;
-
-  const meetingCount = isClient
-    ? state.conversation_scores.client.total_meetings
-    : state.conversation_scores.mentor.total_sessions;
+  const scores = state.conversation_scores;
 
   for (const grade of grades) {
-    const key = grade.criterion;
-    if (key in scoreSectionAny && key !== "total_meetings" && key !== "total_sessions") {
-      const currentScore = scoreSectionAny[key] || 0;
-      const weight = Math.min(meetingCount, 5);
-      const newScore = weight > 1
-        ? Math.round(((currentScore * (weight - 1)) + grade.score) / weight)
-        : grade.score;
-      scoreSectionAny[key] = newScore;
+    const p = grade.persona as keyof typeof scores.engagement;
+
+    if (grade.criterion === "engagement" && p in scores.engagement) {
+      // Take the best engagement score for each persona (not average — reward showing up)
+      const current = scores.engagement[p] || 0;
+      scores.engagement[p] = Math.max(current, grade.score);
+    }
+
+    if (grade.criterion === "problem_understanding" && p in scores.problem_understanding) {
+      const current = (scores.problem_understanding as Record<string, number>)[p] || 0;
+      (scores.problem_understanding as Record<string, number>)[p] = Math.max(current, grade.score);
+    }
+
+    if (grade.criterion === "mentor_quality") {
+      const current = scores.problem_understanding.mentor_quality || 0;
+      scores.problem_understanding.mentor_quality = Math.max(current, grade.score);
+    }
+
+    if (grade.criterion === "solution_explanation" && p in scores.solution_explanation) {
+      const current = (scores.solution_explanation as Record<string, number>)[p] || 0;
+      (scores.solution_explanation as Record<string, number>)[p] = Math.max(current, grade.score);
     }
   }
 
   await updateStudentState(userId, state);
 
-  // Store individual grade records for evidence tracking
+  // Store grade records for evidence
   for (const grade of grades) {
     await prisma.message.create({
       data: {
@@ -156,6 +165,7 @@ export async function updateStudentScores(
         content: JSON.stringify({
           type: "grade",
           criterion: grade.criterion,
+          persona: grade.persona,
           score: grade.score,
           maxScore: grade.maxScore,
           evidence: grade.evidence,
@@ -180,7 +190,6 @@ export async function gradeAndUpdateConversation(
   return grades;
 }
 
-// Reflection quality classifier — standalone, more precise than inline analysis
 export async function classifyReflection(
   hintText: string,
   reflectionText: string,
@@ -192,13 +201,12 @@ HINT GIVEN: ${hintText}
 STUDENT'S REFLECTION: ${reflectionText}
 STUDENT'S PROJECT CONTEXT: ${studentContext}
 
-Evaluate the reflection quality:
-- DEEP: Student restates in own words, connects to their project, identifies trade-offs or edge cases not in the hint. Shows genuine understanding.
-- MEDIUM: Student gets the general idea but misses nuance or doesn't connect to their specific project.
-- SHALLOW: Simple acknowledgment ("ok", "got it"), restates hint verbatim, fewer than 15 words, no project context.
+Evaluate:
+- DEEP: Restates in own words, connects to project, identifies trade-offs
+- MEDIUM: Gets general idea but misses nuance
+- SHALLOW: "ok" / "got it" / restates hint / fewer than 15 words
 
-Return JSON: {"quality": "deep"|"medium"|"shallow", "reasoning": "brief explanation", "forgiven": true|false}
-Forgiven is true for deep, conditionally true for medium (if student shows genuine effort), false for shallow.`;
+Return JSON: {"quality": "deep"|"medium"|"shallow", "reasoning": "brief", "forgiven": true|false}`;
 
   try {
     const response = await anthropic.messages.create({
@@ -206,13 +214,11 @@ Forgiven is true for deep, conditionally true for medium (if student shows genui
       max_tokens: 300,
       messages: [{ role: "user", content: prompt }],
     });
-
     const text = response.content[0].type === "text" ? response.content[0].text : "";
     const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (jsonMatch) return JSON.parse(jsonMatch[0]);
   } catch (error) {
     console.error("Reflection classifier error:", error);
   }
-
   return { quality: "medium", reasoning: "Unable to classify", forgiven: false };
 }

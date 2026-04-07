@@ -17,91 +17,90 @@ export async function GET() {
     orderBy: { name: "asc" },
     include: {
       studentState: { select: { stateJson: true } },
-      conversations: { select: { agentType: true, messageCount: true } },
+      conversations: { select: { agentType: true, persona: true, messageCount: true } },
     },
   });
 
-  // CSV header
   const headers = [
     "Name",
     "Email",
     "Course",
     "Team",
+    // Engagement (50 pts: 10 per role)
+    "Engagement: Elena (10)",
+    "Engagement: Marcus (10)",
+    "Engagement: Priya (10)",
+    "Engagement: James (10)",
+    "Engagement: Mentor (10)",
+    "Engagement Total (50)",
+    // Problem Understanding (30 pts: 5 per stakeholder + 10 mentor quality)
+    "Understanding: Elena (5)",
+    "Understanding: Marcus (5)",
+    "Understanding: Priya (5)",
+    "Understanding: James (5)",
+    "Mentor Quality (10)",
+    "Understanding Total (30)",
+    // Solution Explanation (20 pts: 5 per stakeholder)
+    "Explanation: Elena (5)",
+    "Explanation: Marcus (5)",
+    "Explanation: Priya (5)",
+    "Explanation: James (5)",
+    "Explanation Total (20)",
+    // Grand total
+    "Individual Total (100)",
+    // Activity
     "Client Meetings",
     "Mentor Sessions",
     "Total Messages",
     "Requirements Discovered",
     "Architecture Decisions",
-    "Phase 1 Status",
-    "Phase 2 Status",
-    "Phase 3 Status",
-    "Phase 4 Status",
-    "Stakeholder Engagement (15)",
-    "Requirements Discovery (15)",
-    "Solution Presentation (15)",
-    "Client Subtotal (45)",
-    "Question Quality (15)",
-    "Reflection Depth (20)",
-    "Growth & Iteration (20)",
-    "Mentor Subtotal (55)",
-    "Individual Total (100)",
+    "Phase 1",
+    "Phase 2",
+    "Phase 3",
+    "Phase 4",
     "Deep Reflections",
     "Medium Reflections",
     "Shallow Reflections",
-    "Hints Forgiven",
   ];
 
   const rows = students.map((s) => {
     const state = s.studentState ? JSON.parse(s.studentState.stateJson) : null;
-    const cs = state?.conversation_scores?.client || {};
-    const ms = state?.conversation_scores?.mentor || {};
+    const sc = state?.conversation_scores || {};
+    const eng = sc.engagement || {};
+    const und = sc.problem_understanding || {};
+    const exp = sc.solution_explanation || {};
     const hints = state?.hint_log || [];
     const reqs = state?.requirements_uncovered || {};
     const bp = state?.build_progress || {};
 
+    const engTotal = (eng.elena || 0) + (eng.marcus || 0) + (eng.priya || 0) + (eng.james || 0) + (eng.mentor || 0);
+    const undTotal = (und.elena || 0) + (und.marcus || 0) + (und.priya || 0) + (und.james || 0) + (und.mentor_quality || 0);
+    const expTotal = (exp.elena || 0) + (exp.marcus || 0) + (exp.priya || 0) + (exp.james || 0);
+    const grandTotal = engTotal + undTotal + expTotal;
+
     const reqCount = Object.values(reqs).filter((r: unknown) => (r as { discovered: boolean }).discovered).length;
     const decisionCount = (state?.architecture_decisions || []).length;
-
-    const clientTotal = (cs.stakeholder_engagement || 0) + (cs.requirements_discovery || 0) +
-      (cs.solution_presentation || 0);
-    const mentorTotal = (ms.question_quality || 0) + (ms.reflection_depth || 0) +
-      (ms.growth_and_iteration || 0);
-
-    const clientMsgs = s.conversations.filter((c) => c.agentType === "client");
-    const mentorMsgs = s.conversations.filter((c) => c.agentType === "mentor");
+    const clientMeetings = s.conversations.filter((c) => c.agentType === "client").length;
+    const mentorSessions = s.conversations.filter((c) => c.agentType === "mentor").length;
     const totalMessages = s.conversations.reduce((sum, c) => sum + c.messageCount, 0);
 
     return [
-      s.name,
-      s.email,
-      s.course || "",
-      s.teamId || "",
-      clientMsgs.length,
-      mentorMsgs.length,
-      totalMessages,
-      reqCount,
-      decisionCount,
+      s.name, s.email, s.course || "", s.teamId || "",
+      eng.elena || 0, eng.marcus || 0, eng.priya || 0, eng.james || 0, eng.mentor || 0, engTotal,
+      und.elena || 0, und.marcus || 0, und.priya || 0, und.james || 0, und.mentor_quality || 0, undTotal,
+      exp.elena || 0, exp.marcus || 0, exp.priya || 0, exp.james || 0, expTotal,
+      grandTotal,
+      clientMeetings, mentorSessions, totalMessages, reqCount, decisionCount,
       bp.phase_1?.status || "not_started",
       bp.phase_2?.status || "not_started",
       bp.phase_3?.status || "not_started",
       bp.phase_4?.status || "not_started",
-      cs.stakeholder_engagement || 0,
-      cs.requirements_discovery || 0,
-      cs.solution_presentation || 0,
-      clientTotal,
-      ms.question_quality || 0,
-      ms.reflection_depth || 0,
-      ms.growth_and_iteration || 0,
-      mentorTotal,
-      clientTotal + mentorTotal,
       hints.filter((h: { reflection_quality: string }) => h.reflection_quality === "deep").length,
       hints.filter((h: { reflection_quality: string }) => h.reflection_quality === "medium").length,
       hints.filter((h: { reflection_quality: string }) => h.reflection_quality === "shallow").length,
-      hints.filter((h: { forgiven: boolean }) => h.forgiven).length,
     ];
   });
 
-  // Build CSV
   const csvContent = [
     headers.join(","),
     ...rows.map((row) =>

@@ -98,9 +98,9 @@ export async function POST(req: NextRequest) {
 
   // Increment meeting/session count NOW (optimistic) so progressive disclosure works
   if (agentType === "client") {
-    studentState.conversation_scores.client.total_meetings += 1;
+    studentState.conversation_scores.total_meetings += 1;
   } else {
-    studentState.conversation_scores.mentor.total_sessions += 1;
+    studentState.conversation_scores.total_sessions += 1;
   }
   const { updateStudentState } = await import("@/lib/agents/state");
   await updateStudentState(session.user.id, studentState);
@@ -111,11 +111,11 @@ export async function POST(req: NextRequest) {
   if (agentType === "client") {
     initialMessage = getClientInitialMessage(
       persona,
-      studentState.conversation_scores.client.total_meetings
+      studentState.conversation_scores.total_meetings
     );
   } else {
     initialMessage = getMentorInitialMessage(
-      studentState.conversation_scores.mentor.total_sessions,
+      studentState.conversation_scores.total_sessions,
       studentState
     );
   }

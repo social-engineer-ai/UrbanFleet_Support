@@ -46,18 +46,34 @@ export interface StudentStateType {
     student_found_fix_independently: boolean;
   }>;
   conversation_scores: {
-    client: {
-      stakeholder_engagement: number;
-      requirements_discovery: number;
-      solution_presentation: number;
-      total_meetings: number;
+    // Engagement: 10 pts each (50 total)
+    engagement: {
+      elena: number;
+      marcus: number;
+      priya: number;
+      james: number;
+      mentor: number;
     };
-    mentor: {
-      question_quality: number;
-      reflection_depth: number;
-      growth_and_iteration: number;
-      total_sessions: number;
+    // Problem Understanding: 5 pts per stakeholder (20) + 10 pts mentor quality (30 total)
+    problem_understanding: {
+      elena: number;
+      marcus: number;
+      priya: number;
+      james: number;
+      mentor_quality: number;
     };
+    // Solution Explanation: 5 pts per stakeholder (20 total) — Finals Assessment only
+    solution_explanation: {
+      elena: number;
+      marcus: number;
+      priya: number;
+      james: number;
+    };
+    // Counters
+    total_meetings: number;
+    total_sessions: number;
+    // Assessment phase tracking
+    assessment_phase: "build" | "finals";
   };
   flags: string[];
 }
@@ -111,18 +127,12 @@ export function createDefaultState(userId: string, name: string, course: string)
     lambda_code_log: [],
     debug_log: [],
     conversation_scores: {
-      client: {
-        stakeholder_engagement: 0,
-        requirements_discovery: 0,
-        solution_presentation: 0,
-        total_meetings: 0,
-      },
-      mentor: {
-        question_quality: 0,
-        reflection_depth: 0,
-        growth_and_iteration: 0,
-        total_sessions: 0,
-      },
+      engagement: { elena: 0, marcus: 0, priya: 0, james: 0, mentor: 0 },
+      problem_understanding: { elena: 0, marcus: 0, priya: 0, james: 0, mentor_quality: 0 },
+      solution_explanation: { elena: 0, marcus: 0, priya: 0, james: 0 },
+      total_meetings: 0,
+      total_sessions: 0,
+      assessment_phase: "build" as const,
     },
     flags: [],
   };
@@ -207,7 +217,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
         if (updatedState.requirements_uncovered[req]) {
           updatedState.requirements_uncovered[req] = {
             discovered: true,
-            meeting: agentType === "client" ? updatedState.conversation_scores.client.total_meetings + 1 : undefined,
+            meeting: agentType === "client" ? updatedState.conversation_scores.total_meetings + 1 : undefined,
             persona: persona || undefined,
           };
         }

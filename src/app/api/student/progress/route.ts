@@ -54,9 +54,14 @@ export async function GET() {
   const mentorSessions = conversations.filter((c) => c.agentType === "mentor").length;
   const personasMet = [...new Set(conversations.filter((c) => c.agentType === "client").map((c) => c.persona))];
 
-  // Scores (expose as qualitative bands, not raw numbers)
-  const clientScores = state.conversation_scores.client;
-  const mentorScores = state.conversation_scores.mentor;
+  // Engagement scores per persona
+  const engagement = state.conversation_scores.engagement || {};
+  const engagementTotal = Object.values(engagement).reduce((sum: number, v) => sum + (v as number || 0), 0);
+
+  // Filter phases based on course
+  const coursePhases = state.course === "358"
+    ? phases.filter((p) => p.key !== "phase_4")
+    : phases;
 
   return Response.json({
     name: state.student_name,
@@ -67,22 +72,29 @@ export async function GET() {
       total: requirements.length,
     },
     reflections: reflectionBreakdown,
-    phases,
+    phases: coursePhases,
     decisionsCount,
     conversations: {
       clientMeetings,
       mentorSessions,
       personasMet,
-      totalMeetings: clientScores.total_meetings,
-      totalSessions: mentorScores.total_sessions,
+      totalMeetings: state.conversation_scores.total_meetings,
+      totalSessions: state.conversation_scores.total_sessions,
     },
-    // Qualitative progress indicators (not raw scores)
+    engagement: {
+      elena: engagement.elena || 0,
+      marcus: engagement.marcus || 0,
+      priya: engagement.priya || 0,
+      james: engagement.james || 0,
+      mentor: engagement.mentor || 0,
+      total: engagementTotal,
+    },
     indicators: {
       requirementsProgress: reqDiscovered >= 6 ? "strong" : reqDiscovered >= 4 ? "good" : reqDiscovered >= 2 ? "developing" : "early",
       reflectionQuality: reflectionBreakdown.total === 0 ? "no_data" :
         (reflectionBreakdown.deep / reflectionBreakdown.total) >= 0.5 ? "strong" :
         (reflectionBreakdown.deep + reflectionBreakdown.medium) / reflectionBreakdown.total >= 0.6 ? "good" : "developing",
-      engagement: (clientMeetings + mentorSessions) >= 8 ? "strong" : (clientMeetings + mentorSessions) >= 4 ? "good" : "early",
+      engagement: engagementTotal >= 40 ? "strong" : engagementTotal >= 25 ? "good" : engagementTotal >= 10 ? "developing" : "early",
       stakeholderCoverage: personasMet.length >= 4 ? "complete" : personasMet.length >= 3 ? "good" : personasMet.length >= 1 ? "developing" : "not_started",
     },
   });

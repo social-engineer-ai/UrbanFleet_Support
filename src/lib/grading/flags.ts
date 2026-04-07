@@ -69,12 +69,12 @@ export async function evaluateFlags(userId: string): Promise<Flag[]> {
 
   // 3. No client meetings but has mentor sessions
   if (
-    state.conversation_scores.client.total_meetings === 0 &&
-    state.conversation_scores.mentor.total_sessions >= 2
+    state.conversation_scores.total_meetings === 0 &&
+    state.conversation_scores.total_sessions >= 2
   ) {
     newFlags.push({
       type: FLAG_TYPES.NO_CLIENT,
-      message: "Student has had ${state.conversation_scores.mentor.total_sessions} Mentor sessions but zero Client meetings — skipping requirements elicitation",
+      message: "Student has had ${state.conversation_scores.total_sessions} Mentor sessions but zero Client meetings — skipping requirements elicitation",
       createdAt: now.toISOString(),
       resolved: false,
     });
