@@ -6,6 +6,7 @@ import Link from "next/link";
 interface DeadlineInfo {
   label: string;
   due: string;
+  dueLabel?: string;
   description: string;
 }
 
@@ -51,8 +52,8 @@ export function DeadlinePopup({ deadlines }: { deadlines?: Record<string, Deadli
         <div className="space-y-3 mb-6">
           {items.map((d) => (
             <div key={d.label} className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-16 text-xs font-semibold text-blue-700 bg-blue-50 rounded px-2 py-1 text-center">
-                {formatShort(d.due)}
+              <div className="flex-shrink-0 w-20 text-xs font-semibold text-blue-700 bg-blue-50 rounded px-2 py-1 text-center">
+                {d.dueLabel || formatShort(d.due)}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gray-900">{d.label}</div>

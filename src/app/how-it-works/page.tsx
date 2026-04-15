@@ -125,8 +125,8 @@ export default function HowItWorksPage() {
           <div className="space-y-2">
             {Object.values(DEADLINES).map((d) => (
               <div key={d.label} className="flex gap-3 items-start p-3 bg-white border border-gray-200 rounded-lg">
-                <div className="flex-shrink-0 w-20 text-xs font-semibold text-blue-700 bg-blue-50 rounded px-2 py-1.5 text-center">
-                  {new Date(d.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                <div className="flex-shrink-0 w-24 text-xs font-semibold text-blue-700 bg-blue-50 rounded px-2 py-1.5 text-center">
+                  {d.dueLabel || new Date(d.due).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                 </div>
                 <div className="flex-1">
                   <div className="text-sm font-medium text-gray-900">{d.label}</div>
@@ -144,9 +144,10 @@ export default function HowItWorksPage() {
 
         <Section title="How you&apos;re graded">
           <p className="mb-3">
-            Your <strong>individual grade</strong> (200 points) comes from your conversations on
-            this platform. Your <strong>team grade</strong> (150 points) comes from the actual
-            build in AWS, the Architecture Decision Log, and the final presentation.
+            Your <strong>individual grade on this platform</strong> (100 points) comes from your
+            conversations: 80 points for Client meetings and 20 points for Mentor sessions. Your
+            <strong> team grade</strong> comes from the actual build in AWS, the Architecture
+            Decision Log, and the final presentation.
           </p>
 
           <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -160,13 +161,11 @@ export default function HowItWorksPage() {
           </div>
 
           <div className="bg-white border border-gray-200 rounded-lg p-4 mt-3">
-            <h4 className="font-semibold text-gray-800 text-sm mb-2">Mentor conversations (120 pts)</h4>
-            <ul className="text-sm text-gray-700 space-y-1">
-              <li><strong>Question quality</strong> (25) — architectural thinking vs. &quot;give me the syntax&quot;</li>
-              <li><strong>Reflection depth</strong> (40) — do you demonstrate understanding after hints?</li>
-              <li><strong>Iteration</strong> (30) — when challenged, do you adapt your approach?</li>
-              <li><strong>Independence growth</strong> (25) — do later sessions show more self-sufficiency?</li>
-            </ul>
+            <h4 className="font-semibold text-gray-800 text-sm mb-2">Mentor conversations (20 pts)</h4>
+            <p className="text-sm text-gray-700">
+              Scored on question quality, reflection depth, iteration, and independence growth
+              across sessions.
+            </p>
           </div>
 
           <p className="text-xs text-gray-500 mt-3">
