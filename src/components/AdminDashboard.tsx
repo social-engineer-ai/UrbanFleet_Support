@@ -3,6 +3,18 @@
 import { useState } from "react";
 import Link from "next/link";
 
+interface PersonaCoverage {
+  requirements: number;
+  solution: number;
+  features: number;
+  practice: number;
+}
+
+interface StudentCoverage {
+  byPersona: Record<string, PersonaCoverage>;
+  totals: { p1Done: number; p2Done: number; p3Done: number };
+}
+
 interface StudentData {
   id: string;
   name: string;
@@ -11,11 +23,13 @@ interface StudentData {
   totalConversations: number;
   clientMeetings: number;
   mentorSessions: number;
+  coverage?: StudentCoverage;
   lastActive: string | null;
   conversations: Array<{
     id: string;
     agentType: string;
     persona: string | null;
+    meetingType?: string;
     startedAt: string;
     endedAt: string | null;
     messageCount: number;
@@ -292,19 +306,48 @@ export function AdminDashboard({ students, isInstructor }: { students: StudentDa
                       selectedStudent === s.id ? "bg-blue-50" : ""
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium text-sm">{s.name}</div>
-                        <div className="text-xs text-gray-500">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-sm truncate">{s.name}</div>
+                        <div className="text-xs text-gray-500 truncate">
                           {s.email} &middot; BADM {s.course}
                         </div>
+                        {s.coverage && (
+                          <div className="flex gap-1 mt-1.5 text-[10px]">
+                            <span
+                              className={`px-1.5 py-0.5 rounded ${
+                                s.coverage.totals.p1Done === 4
+                                  ? "bg-blue-100 text-blue-700"
+                                  : s.coverage.totals.p1Done > 0
+                                  ? "bg-blue-50 text-blue-600"
+                                  : "bg-gray-100 text-gray-400"
+                              }`}
+                            >
+                              P1 {s.coverage.totals.p1Done}/4
+                            </span>
+                            <span
+                              className={`px-1.5 py-0.5 rounded ${
+                                s.coverage.totals.p2Done === 4
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : s.coverage.totals.p2Done > 0
+                                  ? "bg-emerald-50 text-emerald-600"
+                                  : "bg-gray-100 text-gray-400"
+                              }`}
+                            >
+                              P2 {s.coverage.totals.p2Done}/4
+                            </span>
+                            {s.coverage.totals.p3Done > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
+                                P3 {s.coverage.totals.p3Done}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <div className="text-xs text-gray-500">
-                          {s.totalConversations} convs
-                        </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-xs text-gray-500">{s.totalConversations}</div>
                         {s.totalConversations === 0 && (
-                          <span className="text-xs text-red-500">No activity</span>
+                          <span className="text-[10px] text-red-500">No activity</span>
                         )}
                       </div>
                     </div>
@@ -336,6 +379,55 @@ export function AdminDashboard({ students, isInstructor }: { students: StudentDa
                       }
                     />
                   </div>
+
+                  {/* Per-part, per-persona coverage grid */}
+                  {activeStudent.coverage && (
+                    <div className="mt-4 border-t border-gray-100 pt-4">
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">
+                        Meeting Coverage
+                      </h3>
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-gray-500">
+                            <th className="text-left font-medium py-1">Stakeholder</th>
+                            <th className="text-center font-medium py-1 w-16">Part 1</th>
+                            <th className="text-center font-medium py-1 w-16">Part 2</th>
+                            <th className="text-center font-medium py-1 w-16">Part 3</th>
+                            <th className="text-center font-medium py-1 w-16">Practice</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(["elena", "marcus", "priya", "james"] as const).map((p) => {
+                            const c = activeStudent.coverage!.byPersona[p];
+                            return (
+                              <tr key={p} className="border-t border-gray-50">
+                                <td className="py-1.5 text-gray-800">{PERSONA_LABELS[p]}</td>
+                                <td className="py-1.5 text-center">
+                                  <CoverageCell num={c.requirements} color="blue" />
+                                </td>
+                                <td className="py-1.5 text-center">
+                                  <CoverageCell
+                                    num={c.solution}
+                                    color="emerald"
+                                    locked={c.requirements === 0 && c.solution === 0}
+                                  />
+                                </td>
+                                <td className="py-1.5 text-center">
+                                  <CoverageCell num={c.features} color="violet" />
+                                </td>
+                                <td className="py-1.5 text-center">
+                                  <CoverageCell num={c.practice} color="gray" />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      <p className="text-[10px] text-gray-400 mt-2">
+                        Expected: 4× Part 1 + 4× Part 2 = 8 core meetings. Part 3 is optional. 🔒 = locked (requires Part 1 first).
+                      </p>
+                    </div>
+                  )}
 
                   {/* Requirements Progress */}
                   {activeStudent.state && (
@@ -390,6 +482,15 @@ export function AdminDashboard({ students, isInstructor }: { students: StudentDa
                             <span className="text-sm font-medium">
                               {PERSONA_LABELS[conv.persona || ""] || conv.agentType}
                             </span>
+                            {conv.agentType === "client" && conv.meetingType && (
+                              <span
+                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                  MEETING_TYPE_ADMIN_BADGE[conv.meetingType]?.cls || "bg-gray-100 text-gray-600"
+                                }`}
+                              >
+                                {MEETING_TYPE_ADMIN_BADGE[conv.meetingType]?.label || conv.meetingType}
+                              </span>
+                            )}
                           </div>
                           <span className="text-xs text-gray-500">
                             {new Date(conv.startedAt).toLocaleString()} &middot;{" "}
@@ -446,6 +547,34 @@ export function AdminDashboard({ students, isInstructor }: { students: StudentDa
         </div>
       </div>
     </div>
+  );
+}
+
+const MEETING_TYPE_ADMIN_BADGE: Record<string, { label: string; cls: string }> = {
+  requirements: { label: "P1", cls: "bg-blue-100 text-blue-700" },
+  solution: { label: "P2", cls: "bg-emerald-100 text-emerald-700" },
+  features: { label: "P3", cls: "bg-violet-100 text-violet-700" },
+  practice: { label: "Prac", cls: "bg-gray-100 text-gray-600" },
+};
+
+const COVERAGE_CELL_COLORS: Record<string, string> = {
+  blue: "bg-blue-100 text-blue-700",
+  emerald: "bg-emerald-100 text-emerald-700",
+  violet: "bg-violet-100 text-violet-700",
+  gray: "bg-gray-100 text-gray-600",
+};
+
+function CoverageCell({ num, color, locked = false }: { num: number; color: string; locked?: boolean }) {
+  if (locked) {
+    return <span className="inline-block w-10 rounded bg-gray-50 text-gray-300 text-xs py-0.5">🔒</span>;
+  }
+  if (num === 0) {
+    return <span className="inline-block w-10 rounded bg-gray-50 text-gray-300 text-xs py-0.5">—</span>;
+  }
+  return (
+    <span className={`inline-block w-10 rounded text-xs py-0.5 font-medium ${COVERAGE_CELL_COLORS[color]}`}>
+      {num}×
+    </span>
   );
 }
 

@@ -7,6 +7,7 @@ interface Conversation {
   id: string;
   agentType: string;
   persona: string | null;
+  meetingType?: string;
   startedAt: string;
   endedAt: string | null;
   summary: string | null;
@@ -19,6 +20,13 @@ const PERSONA_LABELS: Record<string, string> = {
   priya: "Priya Sharma",
   james: "James Whitfield",
   mentor: "Dr. Raj Patel",
+};
+
+const MEETING_TYPE_BADGE: Record<string, { label: string; bg: string; text: string }> = {
+  requirements: { label: "P1", bg: "bg-blue-500/20", text: "text-blue-300" },
+  solution:     { label: "P2", bg: "bg-emerald-500/20", text: "text-emerald-300" },
+  features:     { label: "P3", bg: "bg-violet-500/20", text: "text-violet-300" },
+  practice:     { label: "Prac", bg: "bg-slate-500/30", text: "text-slate-300" },
 };
 
 export function Sidebar({
@@ -188,6 +196,12 @@ function ConversationItem({
   isActive: boolean;
   onClick: () => void;
 }) {
+  // Only client meetings get a meeting-type badge — mentor sessions don't use meetingType.
+  const badge =
+    conv.agentType === "client" && conv.meetingType
+      ? MEETING_TYPE_BADGE[conv.meetingType]
+      : null;
+
   return (
     <button
       onClick={onClick}
@@ -199,7 +213,7 @@ function ConversationItem({
     >
       <div className="flex items-center gap-2">
         <span
-          className={`w-2 h-2 rounded-full ${
+          className={`w-2 h-2 rounded-full flex-shrink-0 ${
             conv.endedAt
               ? "bg-slate-500"
               : conv.agentType === "client"
@@ -210,6 +224,13 @@ function ConversationItem({
         <span className="font-medium truncate">
           {PERSONA_LABELS[conv.persona || ""] || conv.agentType}
         </span>
+        {badge && (
+          <span
+            className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${badge.bg} ${badge.text} flex-shrink-0`}
+          >
+            {badge.label}
+          </span>
+        )}
         {!conv.endedAt && (
           <span className="text-[10px] text-green-400 ml-auto">live</span>
         )}
