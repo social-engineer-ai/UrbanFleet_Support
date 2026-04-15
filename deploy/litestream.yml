@@ -1,0 +1,12 @@
+# Litestream v0.5 config — replicates StakeholderSim SQLite to S3
+# continuously (near-zero recovery point objective). AWS credentials are
+# supplied via systemd EnvironmentFile — see the drop-in override that
+# scripts/install_litestream.sh installs at
+# /etc/systemd/system/litestream.service.d/override.conf.
+#
+# Installed to /etc/litestream.yml by scripts/install_litestream.sh.
+
+dbs:
+  - path: /opt/stakeholdersim/prisma/prisma/dev.db
+    replica:
+      url: s3://stakeholdersim-data/litestream/dev.db?region=us-east-1

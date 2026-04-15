@@ -4,9 +4,22 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+// Seed the instructor and TA accounts on first deploy. Uses upsert with
+// `update: {}` so existing accounts (including rotated passwords) are
+// preserved across re-deploys — the seeded password is only ever written
+// on the initial insert. Passwords come from env vars so they're not
+// hardcoded in git history; the fallbacks below exist only for dev and
+// first-time bootstrap, and should be rotated via /forgot-password
+// immediately after first login.
 async function main() {
-  const instructorPassword = await bcrypt.hash("admin2026!", 10);
-  const taPassword = await bcrypt.hash("ta2026!", 10);
+  const instructorPassword = await bcrypt.hash(
+    process.env.INSTRUCTOR_SEED_PASSWORD || "change-me-after-first-login",
+    10,
+  );
+  const taPassword = await bcrypt.hash(
+    process.env.TA_SEED_PASSWORD || "change-me-after-first-login",
+    10,
+  );
 
   await prisma.user.upsert({
     where: { email: "ashishk@illinois.edu" },
@@ -34,7 +47,7 @@ async function main() {
     },
   });
 
-  console.log("Seeded instructor and TA accounts");
+  console.log("Seeded instructor and TA accounts (existing rows left unchanged)");
 }
 
 main()

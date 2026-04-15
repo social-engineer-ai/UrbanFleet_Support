@@ -34,6 +34,10 @@ npx tsx prisma/seed.ts
 echo "--- Enabling SQLite WAL mode ---"
 sqlite3 prisma/dev.db "PRAGMA journal_mode=WAL;"
 
+# Install / refresh Tier 1 hourly backup cron (idempotent)
+echo "--- Ensuring backup cron installed ---"
+bash scripts/install_backups.sh || echo "WARNING: backup cron install failed (non-blocking)"
+
 # Build the app
 echo "--- Building Next.js ---"
 npm run build
