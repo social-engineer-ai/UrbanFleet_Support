@@ -22,6 +22,16 @@ npm ci --production=false
 echo "--- Generating Prisma client ---"
 npx prisma generate
 
+# Pause Litestream so Prisma can hold the migrations lock cleanly.
+# Resumed at the end of the deploy. Data loss risk is zero — Litestream
+# catches up from the latest WAL checkpoint when it restarts.
+LITESTREAM_WAS_ACTIVE=0
+if systemctl is-active --quiet litestream 2>/dev/null; then
+  LITESTREAM_WAS_ACTIVE=1
+  echo "--- Pausing Litestream for migrations ---"
+  sudo systemctl stop litestream
+fi
+
 # Run migrations
 echo "--- Running database migrations ---"
 npx prisma migrate deploy
@@ -47,6 +57,12 @@ echo "--- Restarting application ---"
 pm2 stop stakeholdersim 2>/dev/null || true
 pm2 start ecosystem.config.js
 pm2 save
+
+# Resume Litestream if we paused it
+if [ "$LITESTREAM_WAS_ACTIVE" = "1" ]; then
+  echo "--- Resuming Litestream ---"
+  sudo systemctl start litestream
+fi
 
 echo ""
 echo "=== Deployment complete ==="
