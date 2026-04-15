@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
       data: {
         email,
         code: otp,
+        purpose: "verify_email",
         expiresAt: new Date(Date.now() + 10 * 60 * 1000),
       },
     });

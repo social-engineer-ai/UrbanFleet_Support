@@ -58,6 +58,47 @@ export async function sendOtpEmail(email: string, otp: string): Promise<boolean>
   }
 }
 
+export async function sendPasswordResetEmail(email: string, otp: string): Promise<boolean> {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.log(`\n========================================`);
+    console.log(`  PASSWORD RESET CODE for ${email}: ${otp}`);
+    console.log(`========================================\n`);
+    return true;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || "StakeholderSim <noreply@illinois.edu>",
+      to: email,
+      subject: "StakeholderSim — Password Reset Code",
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+          <h2 style="color: #1e3a5f;">StakeholderSim — Password Reset</h2>
+          <p>Someone requested a password reset for this account. Enter the code below to set a new password:</p>
+          <div style="background: #f0f4f8; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1e3a5f;">${otp}</span>
+          </div>
+          <p style="color: #666;">This code expires in 10 minutes.</p>
+          <p style="color: #999; font-size: 12px;">If you didn't request a password reset, you can safely ignore this email — your password will not change.</p>
+        </div>
+      `,
+    });
+    return true;
+  } catch (error) {
+    console.error("Failed to send password reset email:", error);
+    console.log(`\n========================================`);
+    console.log(`  PASSWORD RESET CODE for ${email}: ${otp} (email send failed)`);
+    console.log(`========================================\n`);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    void sendInstructorAlert(
+      "Password reset email send failed",
+      `A student tried to reset their password and the email send failed.\n\nStudent email: ${email}\nError: ${errMsg}\n\nSame root causes as OTP failures — likely Gmail app password revoked. Fix at https://myaccount.google.com/apppasswords, then update SMTP_PASS and pm2 restart with --update-env.\n\nMeanwhile the reset code is in pm2 logs (grep "PASSWORD RESET CODE for ${email}" /var/log/stakeholdersim/out.log).`,
+      { category: "smtp_failure", studentEmail: email }
+    );
+    return false;
+  }
+}
+
 // =============================================================================
 // Instructor alert system
 // =============================================================================

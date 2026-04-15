@@ -27,6 +27,7 @@ model OtpCode {
   id        String   @id @default(cuid())
   email     String
   code      String
+  purpose   String   @default("verify_email")
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())

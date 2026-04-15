@@ -8,11 +8,14 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Email and code required" }, { status: 400 });
   }
 
-  // Find valid OTP
+  // Find valid OTP (scoped to email-verification codes — password-reset codes
+  // live in the same table but have purpose = "reset_password" and must not be
+  // accepted here, since this route also creates the StudentState row).
   const otpRecord = await prisma.otpCode.findFirst({
     where: {
       email,
       code,
+      purpose: "verify_email",
       used: false,
       expiresAt: { gt: new Date() },
     },

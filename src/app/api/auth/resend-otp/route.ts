@@ -15,9 +15,9 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Invalid request" }, { status: 400 });
     }
 
-    // Invalidate old OTPs
+    // Invalidate old verify-email OTPs (don't touch password-reset codes for this email)
     await prisma.otpCode.updateMany({
-      where: { email, used: false },
+      where: { email, purpose: "verify_email", used: false },
       data: { used: true },
     });
 
@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
       data: {
         email,
         code: otp,
+        purpose: "verify_email",
         expiresAt: new Date(Date.now() + 10 * 60 * 1000),
       },
     });
