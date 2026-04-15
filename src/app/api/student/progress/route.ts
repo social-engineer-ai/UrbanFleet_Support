@@ -60,9 +60,26 @@ export async function GET() {
   const coverage = await computeClientCoverage(session.user.id);
   const coverageTotalsData = coverageTotals(coverage);
 
-  // Engagement scores per persona
-  const engagement = state.conversation_scores.engagement || {};
-  const engagementTotal = Object.values(engagement).reduce((sum: number, v) => sum + (v as number || 0), 0);
+  // Engagement scores per persona. New shape: { elena: { requirements, solution }, ..., mentor: number }.
+  // Sum per persona (requirements + solution, each 0-5) for display purposes.
+  const engagementRaw = state.conversation_scores.engagement || {};
+  function personaTotal(p: string): number {
+    const entry = (engagementRaw as Record<string, unknown>)[p];
+    if (typeof entry === "number") return entry;
+    if (entry && typeof entry === "object") {
+      const e = entry as { requirements?: number; solution?: number };
+      return (e.requirements || 0) + (e.solution || 0);
+    }
+    return 0;
+  }
+  const engagement = {
+    elena: personaTotal("elena"),
+    marcus: personaTotal("marcus"),
+    priya: personaTotal("priya"),
+    james: personaTotal("james"),
+    mentor: (engagementRaw as { mentor?: number }).mentor || 0,
+  };
+  const engagementTotal = engagement.elena + engagement.marcus + engagement.priya + engagement.james + engagement.mentor;
 
   // Filter phases based on course
   const coursePhases = state.course === "358"
@@ -91,11 +108,7 @@ export async function GET() {
     coverageTotals: coverageTotalsData,
     deadlines: DEADLINES,
     engagement: {
-      elena: engagement.elena || 0,
-      marcus: engagement.marcus || 0,
-      priya: engagement.priya || 0,
-      james: engagement.james || 0,
-      mentor: engagement.mentor || 0,
+      ...engagement,
       total: engagementTotal,
     },
     indicators: {
@@ -103,7 +116,8 @@ export async function GET() {
       reflectionQuality: reflectionBreakdown.total === 0 ? "no_data" :
         (reflectionBreakdown.deep / reflectionBreakdown.total) >= 0.5 ? "strong" :
         (reflectionBreakdown.deep + reflectionBreakdown.medium) / reflectionBreakdown.total >= 0.6 ? "good" : "developing",
-      engagement: engagementTotal >= 40 ? "strong" : engagementTotal >= 25 ? "good" : engagementTotal >= 10 ? "developing" : "early",
+      // Rescaled to new 0-50 total (4 × (5+5) + 10 mentor)
+      engagement: engagementTotal >= 35 ? "strong" : engagementTotal >= 20 ? "good" : engagementTotal >= 8 ? "developing" : "early",
       stakeholderCoverage: personasMet.length >= 4 ? "complete" : personasMet.length >= 3 ? "good" : personasMet.length >= 1 ? "developing" : "not_started",
     },
   });

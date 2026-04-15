@@ -154,12 +154,21 @@ export default function HowItWorksPage() {
 
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <h4 className="font-semibold text-gray-800 text-sm mb-2">Client conversations (80 pts)</h4>
-            <ul className="text-sm text-gray-700 space-y-1">
-              <li><strong>Requirements elicitation</strong> (20) — graded from Part 1 meetings</li>
-              <li><strong>Solution presentation</strong> (25) — graded from Part 2 meetings</li>
-              <li><strong>Handling pushback</strong> (20) — graded from Part 2 meetings</li>
-              <li><strong>Business awareness</strong> (15) — graded across all Client meetings</li>
+            <p className="text-sm text-gray-700 mb-2">
+              You get <strong>10 points per stakeholder per part</strong> — 4 stakeholders × 2 parts × 10 = 80 points total. Within each of those 10-point slots:
+            </p>
+            <ul className="text-sm text-gray-700 space-y-1 mb-3">
+              <li><strong>5 points for showing up</strong> — you engaged meaningfully in the meeting (not just said hi and left)</li>
+              <li><strong>5 points for quality</strong>:
+                <ul className="ml-4 mt-1 space-y-0.5 text-xs text-gray-600">
+                  <li>• <strong>Part 1</strong>: how well you gathered requirements — did you probe the pain, articulate concerns back in your own words, demonstrate understanding?</li>
+                  <li>• <strong>Part 2</strong>: business awareness + handling pushback — did you explain in business language, defend your trade-offs, adjust honestly when challenged?</li>
+                </ul>
+              </li>
             </ul>
+            <p className="text-xs text-gray-500">
+              So a student who completes all 8 core meetings (Part 1 + Part 2 × 4 stakeholders) with reasonable engagement and quality gets close to the full 80. Missing a stakeholder costs 20 points (both parts with them).
+            </p>
           </div>
 
           <div className="bg-white border border-gray-200 rounded-lg p-4 mt-3">

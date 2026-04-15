@@ -46,15 +46,18 @@ export interface StudentStateType {
     student_found_fix_independently: boolean;
   }>;
   conversation_scores: {
-    // Engagement: 10 pts each (50 total)
+    // Client engagement: 5 pts per stakeholder per meeting type = 40 (4×5 P1 + 4×5 P2).
+    // Mentor engagement: single 0-10 counter.
+    // "Quantity" score — "did the student show up and stay engaged in this meeting type?"
     engagement: {
-      elena: number;
-      marcus: number;
-      priya: number;
-      james: number;
+      elena: { requirements: number; solution: number };
+      marcus: { requirements: number; solution: number };
+      priya: { requirements: number; solution: number };
+      james: { requirements: number; solution: number };
       mentor: number;
     };
-    // Problem Understanding: 5 pts per stakeholder (20) + 10 pts mentor quality (30 total)
+    // Quality of Part 1 meetings (requirements gathering): 5 pts per stakeholder = 20.
+    // Mentor quality stays as a separate 0-10 counter.
     problem_understanding: {
       elena: number;
       marcus: number;
@@ -62,17 +65,20 @@ export interface StudentStateType {
       james: number;
       mentor_quality: number;
     };
-    // Solution Explanation: 5 pts per stakeholder (20 total) — Finals Assessment only
+    // Quality of Part 2 meetings (solution presentation, business awareness, handling pushback): 5 pts per stakeholder = 20.
     solution_explanation: {
       elena: number;
       marcus: number;
       priya: number;
       james: number;
     };
-    // Counters
+    // Totals across client personas:
+    //   engagement 40 + problem_understanding 20 + solution_explanation 20 = 80 client pts
+    //   mentor engagement 10 + mentor_quality 10 = 20 mentor pts
+    //   grand total individual platform grade: 100 pts
     total_meetings: number;
     total_sessions: number;
-    // Assessment phase tracking
+    // Legacy field kept for backward compat; no longer gates grading since finals are on a separate platform.
     assessment_phase: "build" | "finals";
   };
   flags: string[];
@@ -98,7 +104,36 @@ export async function getStudentState(userId: string): Promise<StudentStateType>
     return defaultState;
   }
 
-  return JSON.parse(stateRecord.stateJson);
+  return migrateStateShape(JSON.parse(stateRecord.stateJson));
+}
+
+// Lazy migration for legacy state blobs. Called on every getStudentState so
+// old and new schemas coexist during the rollout. The old engagement format
+// stored a single 0-10 number per persona; the new format stores per-meeting-type
+// { requirements, solution } with each capped at 5. We migrate existing values
+// into the `requirements` slot (capped at 5) since all historical conversations
+// were Part 1 meetings — this preserves student effort without dropping anyone.
+function migrateStateShape(state: StudentStateType): StudentStateType {
+  const scores = state.conversation_scores;
+  if (!scores || !scores.engagement) return state;
+
+  const eng = scores.engagement as Record<string, unknown>;
+  for (const p of ["elena", "marcus", "priya", "james"] as const) {
+    const current = eng[p];
+    if (typeof current === "number") {
+      eng[p] = { requirements: Math.min(current, 5), solution: 0 };
+    } else if (!current || typeof current !== "object") {
+      eng[p] = { requirements: 0, solution: 0 };
+    } else {
+      // Already new shape — make sure both slots exist
+      const c = current as { requirements?: number; solution?: number };
+      eng[p] = { requirements: c.requirements ?? 0, solution: c.solution ?? 0 };
+    }
+  }
+  if (typeof eng.mentor !== "number") {
+    eng.mentor = 0;
+  }
+  return state;
 }
 
 export function createDefaultState(userId: string, name: string, course: string): StudentStateType {
@@ -127,7 +162,13 @@ export function createDefaultState(userId: string, name: string, course: string)
     lambda_code_log: [],
     debug_log: [],
     conversation_scores: {
-      engagement: { elena: 0, marcus: 0, priya: 0, james: 0, mentor: 0 },
+      engagement: {
+        elena: { requirements: 0, solution: 0 },
+        marcus: { requirements: 0, solution: 0 },
+        priya: { requirements: 0, solution: 0 },
+        james: { requirements: 0, solution: 0 },
+        mentor: 0,
+      },
       problem_understanding: { elena: 0, marcus: 0, priya: 0, james: 0, mentor_quality: 0 },
       solution_explanation: { elena: 0, marcus: 0, priya: 0, james: 0 },
       total_meetings: 0,

@@ -79,14 +79,14 @@ ${transcript}
 Grade the following criteria. Return a JSON object with "grades" array:
 
 ${!isMentor ? `
-1. ENGAGEMENT (max 10 pts) — Did the student engage meaningfully in this ${meetingTypeLabel} meeting?
-   9-10: Multi-turn conversation, asked questions, responded to concerns, stayed through a full cycle
-   6-8: Engaged but briefly, touched on concern but didn't fully explore
-   3-5: Minimal — single superficial exchange
-   0-2: Didn't engage or said hello and left
+1. ENGAGEMENT (max 5 pts) — Did the student show up and engage meaningfully in this ${meetingTypeLabel} meeting?
+   5: Multi-turn conversation, asked questions, responded to concerns, stayed through a full cycle
+   3-4: Engaged but briefly, touched on concern but didn't fully explore
+   1-2: Minimal — single superficial exchange
+   0: Didn't engage or said hello and left
 
-${gradeProblemUnderstanding ? `2. PROBLEM UNDERSTANDING (max 5 pts) — Does the student understand this stakeholder's core concern?
-   Only score if engagement >= 3. Otherwise 0.
+${gradeProblemUnderstanding ? `2. PROBLEM UNDERSTANDING (max 5 pts) — Quality of the student's requirements gathering with this stakeholder.
+   Only score if engagement >= 2. Otherwise 0.
    ${meetingType === "requirements"
      ? `In a Part 1 Requirements meeting, we look for: did the student probe the pain, get specifics, and (most importantly) demonstrate understanding by being able to articulate the stakeholder's top concerns back to them? Reward the teach-back moments.`
      : `In a Part 3 Features Proposal meeting, we look for: did the student's proposal demonstrate real understanding of an unmet business need for this stakeholder?`}
@@ -94,12 +94,13 @@ ${gradeProblemUnderstanding ? `2. PROBLEM UNDERSTANDING (max 5 pts) — Does the
    2-3: Understands generally but misses an element
    0-1: Only vague sense of the problem` : ""}
 
-${gradeSolutionExplanation ? `2. SOLUTION EXPLANATION (max 5 pts) — Can the student explain their solution in this stakeholder's language and connect it to the stakeholder's specific pain points from Part 1?
-   Only score if engagement >= 3. Otherwise 0.
-   This is a Part 2 Solution Demonstration meeting — the student should be walking the stakeholder through a concrete build and explaining how it addresses the stakeholder's concerns. Reward business-language explanations, honest acknowledgment of limitations, and ability to handle pushback.
-   4-5: Explains clearly in business terms, directly addresses stakeholder's specific pains, handles pushback well
+${gradeSolutionExplanation ? `2. SOLUTION EXPLANATION (max 5 pts) — Quality of the student's solution presentation. Measures two things jointly:
+   (a) Business awareness — can the student explain their solution in the stakeholder's language (not technical jargon) and connect it to this stakeholder's specific pain points from Part 1?
+   (b) Handling pushback — when the stakeholder challenges overclaims or gaps, does the student defend thoughtfully, adjust honestly, or crumble?
+   Only score if engagement >= 2. Otherwise 0.
+   4-5: Explains clearly in business terms, directly addresses stakeholder's specific pains, handles pushback thoughtfully (defends or honestly adjusts)
    2-3: Adequate but somewhat technical or missing an element; partial pushback handling
-   0-1: Raw technical terms; stakeholder would be confused; or no actual solution presented` : ""}
+   0-1: Raw technical terms; stakeholder would be confused; OR no actual solution presented; OR collapses under pushback` : ""}
 ` : `
 1. ENGAGEMENT (max 10 pts) — Did the student engage meaningfully with the Mentor?
    9-10: Multi-turn, asked questions, shared thinking, stayed through hint-reflection cycles
@@ -147,7 +148,15 @@ Return valid JSON only.`;
       criterion: g.criterion,
       persona: g.persona || personaName,
       score: g.score,
-      maxScore: g.criterion === "engagement" ? 10 : g.criterion === "mentor_quality" ? 10 : 5,
+      // Mentor engagement keeps the 0-10 scale; client-side engagement is 0-5 per meeting type.
+      maxScore:
+        g.criterion === "engagement"
+          ? g.persona === "mentor"
+            ? 10
+            : 5
+          : g.criterion === "mentor_quality"
+            ? 10
+            : 5,
       evidence: g.evidence || [],
       reasoning: g.reasoning || "",
     }));
@@ -166,16 +175,39 @@ export async function updateStudentScores(
   const state = await getStudentState(userId);
   const scores = state.conversation_scores;
 
-  for (const grade of grades) {
-    const p = grade.persona as keyof typeof scores.engagement;
+  // Read the conversation to find out which meeting type this grading pass belongs to.
+  // Engagement scores route to engagement[persona].requirements for Part 1 meetings and
+  // engagement[persona].solution for Part 2 meetings. Practice/features proposals
+  // currently don't contribute to the 80-pt main grade (features feeds the separate
+  // innovation leaderboard).
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { meetingType: true },
+  });
+  const meetingType = conversation?.meetingType || "requirements";
 
-    if (grade.criterion === "engagement" && p in scores.engagement) {
-      // Take the best engagement score for each persona (not average — reward showing up)
-      const current = scores.engagement[p] || 0;
-      scores.engagement[p] = Math.max(current, grade.score);
+  const CLIENT_PERSONAS = ["elena", "marcus", "priya", "james"] as const;
+  type ClientPersona = (typeof CLIENT_PERSONAS)[number];
+
+  for (const grade of grades) {
+    const p = grade.persona;
+    const isClientPersona = (CLIENT_PERSONAS as readonly string[]).includes(p);
+
+    if (grade.criterion === "engagement" && isClientPersona) {
+      // Route to the per-meeting-type slot. Only Part 1 and Part 2 meetings
+      // contribute to the 80-pt main engagement score.
+      const slot = meetingType === "solution" ? "solution" : meetingType === "requirements" ? "requirements" : null;
+      if (slot) {
+        const entry = scores.engagement[p as ClientPersona];
+        entry[slot] = Math.max(entry[slot] || 0, grade.score);
+      }
     }
 
-    if (grade.criterion === "problem_understanding" && p in scores.problem_understanding) {
+    if (grade.criterion === "engagement" && p === "mentor") {
+      scores.engagement.mentor = Math.max(scores.engagement.mentor || 0, grade.score);
+    }
+
+    if (grade.criterion === "problem_understanding" && isClientPersona) {
       const current = (scores.problem_understanding as Record<string, number>)[p] || 0;
       (scores.problem_understanding as Record<string, number>)[p] = Math.max(current, grade.score);
     }
@@ -185,7 +217,7 @@ export async function updateStudentScores(
       scores.problem_understanding.mentor_quality = Math.max(current, grade.score);
     }
 
-    if (grade.criterion === "solution_explanation" && p in scores.solution_explanation) {
+    if (grade.criterion === "solution_explanation" && isClientPersona) {
       const current = (scores.solution_explanation as Record<string, number>)[p] || 0;
       (scores.solution_explanation as Record<string, number>)[p] = Math.max(current, grade.score);
     }
