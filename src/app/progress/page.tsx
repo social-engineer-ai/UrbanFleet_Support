@@ -46,7 +46,8 @@ interface ProgressData {
   indicators: {
     requirementsProgress: string;
     reflectionQuality: string;
-    engagement: string;
+    engagementPart1: string;
+    engagementPart2: string;
     stakeholderCoverage: string;
   };
 }
@@ -213,7 +214,6 @@ export default function ProgressPage() {
           {[
             { label: "Requirements", value: progress.indicators.requirementsProgress },
             { label: "Reflections", value: progress.indicators.reflectionQuality },
-            { label: "Engagement", value: progress.indicators.engagement },
             { label: "Stakeholders", value: progress.indicators.stakeholderCoverage },
           ].map((ind) => {
             const style = INDICATOR_COLORS[ind.value] || INDICATOR_COLORS.early;
@@ -226,6 +226,24 @@ export default function ProgressPage() {
               </div>
             );
           })}
+          {/* Engagement split into Part 1 / Part 2 so the label reflects each phase independently */}
+          {(() => {
+            const p1 = INDICATOR_COLORS[progress.indicators.engagementPart1] || INDICATOR_COLORS.early;
+            const p2 = INDICATOR_COLORS[progress.indicators.engagementPart2] || INDICATOR_COLORS.not_started;
+            return (
+              <div className="bg-white rounded-xl border p-4 text-center">
+                <div className="text-xs text-gray-500 mb-2">Engagement</div>
+                <div className="flex flex-col gap-1 items-center">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${p1.bg} ${p1.text}`}>
+                    <span className="text-[9px] opacity-70">P1</span> {p1.label}
+                  </span>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${p2.bg} ${p2.text}`}>
+                    <span className="text-[9px] opacity-70">P2</span> {p2.label}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">

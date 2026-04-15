@@ -61,25 +61,57 @@ export async function GET() {
   const coverageTotalsData = coverageTotals(coverage);
 
   // Engagement scores per persona. New shape: { elena: { requirements, solution }, ..., mentor: number }.
-  // Sum per persona (requirements + solution, each 0-5) for display purposes.
+  // We compute Part 1 and Part 2 engagement separately so the UI can show a
+  // distinct label for each and students whose state is still in the old shape
+  // (single number) see their historical effort counted toward Part 1 only.
   const engagementRaw = state.conversation_scores.engagement || {};
-  function personaTotal(p: string): number {
+  function personaPart1(p: string): number {
     const entry = (engagementRaw as Record<string, unknown>)[p];
-    if (typeof entry === "number") return entry;
+    if (typeof entry === "number") {
+      // Old shape: all pre-rescale conversations were Part 1 meetings, so the
+      // single number represents Part 1 engagement. Cap at 5 to match the new scale.
+      return Math.min(entry, 5);
+    }
     if (entry && typeof entry === "object") {
-      const e = entry as { requirements?: number; solution?: number };
-      return (e.requirements || 0) + (e.solution || 0);
+      return (entry as { requirements?: number }).requirements || 0;
     }
     return 0;
   }
+  function personaPart2(p: string): number {
+    const entry = (engagementRaw as Record<string, unknown>)[p];
+    if (typeof entry === "number") return 0; // Old shape: no Part 2 yet
+    if (entry && typeof entry === "object") {
+      return (entry as { solution?: number }).solution || 0;
+    }
+    return 0;
+  }
+  const CLIENT_PERSONAS = ["elena", "marcus", "priya", "james"] as const;
+  const part1Total = CLIENT_PERSONAS.reduce((sum, p) => sum + personaPart1(p), 0); // 0..20
+  const part2Total = CLIENT_PERSONAS.reduce((sum, p) => sum + personaPart2(p), 0); // 0..20
+
+  // Display-friendly aggregate (Part 1 + Part 2 + mentor) used by other callers
   const engagement = {
-    elena: personaTotal("elena"),
-    marcus: personaTotal("marcus"),
-    priya: personaTotal("priya"),
-    james: personaTotal("james"),
+    elena: personaPart1("elena") + personaPart2("elena"),
+    marcus: personaPart1("marcus") + personaPart2("marcus"),
+    priya: personaPart1("priya") + personaPart2("priya"),
+    james: personaPart1("james") + personaPart2("james"),
     mentor: (engagementRaw as { mentor?: number }).mentor || 0,
   };
   const engagementTotal = engagement.elena + engagement.marcus + engagement.priya + engagement.james + engagement.mentor;
+
+  // Thresholds for each part's engagement indicator (max 20 per part).
+  // Part 2 stays "not_started" if the student has zero solution-meeting score yet.
+  function labelForPart(total: number, hasAnyActivity: boolean): string {
+    if (!hasAnyActivity) return "not_started";
+    if (total >= 16) return "strong";
+    if (total >= 12) return "good";
+    if (total >= 6) return "developing";
+    return "early";
+  }
+  const part1HasActivity = part1Total > 0;
+  const part2HasActivity = part2Total > 0;
+  const engagementPart1Label = labelForPart(part1Total, part1HasActivity);
+  const engagementPart2Label = labelForPart(part2Total, part2HasActivity);
 
   // Filter phases based on course
   const coursePhases = state.course === "358"
@@ -116,8 +148,12 @@ export async function GET() {
       reflectionQuality: reflectionBreakdown.total === 0 ? "no_data" :
         (reflectionBreakdown.deep / reflectionBreakdown.total) >= 0.5 ? "strong" :
         (reflectionBreakdown.deep + reflectionBreakdown.medium) / reflectionBreakdown.total >= 0.6 ? "good" : "developing",
-      // Rescaled to new 0-50 total (4 × (5+5) + 10 mentor)
-      engagement: engagementTotal >= 35 ? "strong" : engagementTotal >= 20 ? "good" : engagementTotal >= 8 ? "developing" : "early",
+      // Split into Part 1 (requirements meetings) and Part 2 (solution meetings).
+      // Students who only did Part 1 see their Part 1 engagement label as-is and
+      // Part 2 as "not_started" (pending), instead of watching a single aggregated
+      // label drop when the rubric expanded.
+      engagementPart1: engagementPart1Label,
+      engagementPart2: engagementPart2Label,
       stakeholderCoverage: personasMet.length >= 4 ? "complete" : personasMet.length >= 3 ? "good" : personasMet.length >= 1 ? "developing" : "not_started",
     },
   });
