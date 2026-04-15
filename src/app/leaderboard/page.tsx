@@ -26,11 +26,17 @@ interface Scenario {
   description: string;
 }
 
+interface IndividualEntry {
+  name: string;
+  featureProposals: number;
+}
+
 export default function LeaderboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [course, setCourse] = useState("558");
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [individuals, setIndividuals] = useState<IndividualEntry[]>([]);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,11 +54,18 @@ export default function LeaderboardPage() {
 
   async function loadLeaderboard(c: string) {
     setLoading(true);
-    const res = await fetch(`/api/admin/leaderboard?course=${c}`);
-    if (res.ok) {
-      const data = await res.json();
+    const [teamRes, indivRes] = await Promise.all([
+      fetch(`/api/admin/leaderboard?course=${c}`),
+      fetch(`/api/leaderboard/individual?course=${c}`),
+    ]);
+    if (teamRes.ok) {
+      const data = await teamRes.json();
       setLeaderboard(data.leaderboard || []);
       setScenarios(data.scenarios || []);
+    }
+    if (indivRes.ok) {
+      const data = await indivRes.json();
+      setIndividuals(data.entries || []);
     }
     setLoading(false);
   }
@@ -150,6 +163,49 @@ export default function LeaderboardPage() {
                         <span className="text-gray-300 text-xs">—</span>
                       )}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Individual Innovation Leaderboard */}
+        <div className="bg-white rounded-xl shadow-sm border mb-8">
+          <div className="p-4 border-b">
+            <h2 className="font-semibold">Individual Innovation (Part 3)</h2>
+            <p className="text-xs text-gray-500">
+              Students ranked by the number of Part 3 (Additional Features) proposals they've walked stakeholders through. Optional stretch work — not everyone is expected to appear here.
+            </p>
+          </div>
+          {individuals.length === 0 ? (
+            <div className="p-8 text-center text-gray-400 text-sm">
+              No Part 3 proposals yet in BADM {course}. Be the first — start a Part 3 meeting with any stakeholder.
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="text-left text-xs text-gray-500 border-b bg-gray-50">
+                  <th className="px-4 py-3 w-12">Rank</th>
+                  <th className="px-4 py-3">Student</th>
+                  <th className="px-4 py-3 text-right">Part 3 Proposals</th>
+                </tr>
+              </thead>
+              <tbody>
+                {individuals.map((entry, i) => (
+                  <tr key={entry.name + i} className={`border-b hover:bg-gray-50 ${i < 3 ? "bg-violet-50" : ""}`}>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold ${
+                        i === 0 ? "bg-yellow-400 text-yellow-900" :
+                        i === 1 ? "bg-gray-300 text-gray-700" :
+                        i === 2 ? "bg-amber-600 text-white" :
+                        "bg-gray-100 text-gray-500"
+                      }`}>
+                        {i + 1}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-medium text-sm">{entry.name}</td>
+                    <td className="px-4 py-3 text-right text-sm font-bold">{entry.featureProposals}</td>
                   </tr>
                 ))}
               </tbody>

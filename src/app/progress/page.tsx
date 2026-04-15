@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
+interface PersonaCoverage {
+  requirements: number;
+  solution: number;
+  features: number;
+  practice: number;
+}
+
 interface ProgressData {
   name: string;
   course: string;
@@ -29,6 +36,13 @@ interface ProgressData {
     totalMeetings: number;
     totalSessions: number;
   };
+  coverage?: Record<string, PersonaCoverage>;
+  coverageTotals?: {
+    requirements_done: number;
+    solution_done: number;
+    features_done: number;
+  };
+  deadlines?: Record<string, { label: string; due: string; description: string }>;
   indicators: {
     requirementsProgress: string;
     reflectionQuality: string;
@@ -103,6 +117,96 @@ export default function ProgressPage() {
             Back to Chat
           </Link>
         </div>
+
+        {/* Meeting coverage — Part 1 / Part 2 / Part 3 per stakeholder + deadlines */}
+        {progress.coverage && progress.coverageTotals && (
+          <div className="bg-white rounded-xl border p-6 mb-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="font-semibold text-gray-900">Meeting Coverage</h2>
+                <p className="text-xs text-gray-500">
+                  Expected: Part 1 + Part 2 with all four stakeholders (8 core meetings).
+                  Part 3 is optional.
+                </p>
+              </div>
+              <Link href="/how-it-works" className="text-xs text-blue-600 hover:underline">
+                What are the parts?
+              </Link>
+            </div>
+
+            {/* Overall totals */}
+            <div className="grid grid-cols-3 gap-4 mb-5 text-sm">
+              <div>
+                <div className="flex items-baseline justify-between text-xs mb-1">
+                  <span className="text-gray-700 font-medium">Part 1 — Requirements</span>
+                  <span className="text-gray-500">{progress.coverageTotals.requirements_done}/4</span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-500" style={{ width: `${(progress.coverageTotals.requirements_done / 4) * 100}%` }} />
+                </div>
+                {progress.deadlines?.part1 && (
+                  <div className="text-[10px] text-gray-400 mt-1">Due {formatMonthDay(progress.deadlines.part1.due)}</div>
+                )}
+              </div>
+              <div>
+                <div className="flex items-baseline justify-between text-xs mb-1">
+                  <span className="text-gray-700 font-medium">Part 2 — Solution</span>
+                  <span className="text-gray-500">{progress.coverageTotals.solution_done}/4</span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500" style={{ width: `${(progress.coverageTotals.solution_done / 4) * 100}%` }} />
+                </div>
+                {progress.deadlines?.part2 && (
+                  <div className="text-[10px] text-gray-400 mt-1">Due {formatMonthDay(progress.deadlines.part2.due)}</div>
+                )}
+              </div>
+              <div>
+                <div className="flex items-baseline justify-between text-xs mb-1">
+                  <span className="text-gray-700 font-medium">Part 3 — Features</span>
+                  <span className="text-gray-500">{progress.coverageTotals.features_done}/4</span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-violet-500" style={{ width: `${(progress.coverageTotals.features_done / 4) * 100}%` }} />
+                </div>
+                <div className="text-[10px] text-gray-400 mt-1">Optional</div>
+              </div>
+            </div>
+
+            {/* Per-persona grid */}
+            <div className="border-t border-gray-100 pt-4">
+              <div className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wide">By stakeholder</div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-500">
+                    <th className="text-left font-medium py-1">Stakeholder</th>
+                    <th className="text-center font-medium py-1">Part 1</th>
+                    <th className="text-center font-medium py-1">Part 2</th>
+                    <th className="text-center font-medium py-1">Part 3</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(["elena", "marcus", "priya", "james"] as const).map((p) => {
+                    const c = progress.coverage![p];
+                    return (
+                      <tr key={p} className="border-t border-gray-50">
+                        <td className="py-2 text-gray-800">{PERSONA_LABELS[p]}</td>
+                        <td className="py-2 text-center">
+                          <Coverage num={c.requirements} color="blue" />
+                        </td>
+                        <td className="py-2 text-center">
+                          <Coverage num={c.solution} color="emerald" locked={c.requirements === 0 && c.solution === 0} />
+                        </td>
+                        <td className="py-2 text-center">
+                          <Coverage num={c.features} color="violet" />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Indicator Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -261,4 +365,28 @@ export default function ProgressPage() {
       </div>
     </div>
   );
+}
+
+const COVERAGE_COLORS: Record<string, string> = {
+  blue: "bg-blue-100 text-blue-700",
+  emerald: "bg-emerald-100 text-emerald-700",
+  violet: "bg-violet-100 text-violet-700",
+};
+
+function Coverage({ num, color, locked = false }: { num: number; color: string; locked?: boolean }) {
+  if (locked) {
+    return <span className="inline-block w-8 h-6 rounded bg-gray-50 text-gray-300 text-center leading-6 text-xs">🔒</span>;
+  }
+  if (num === 0) {
+    return <span className="inline-block w-8 h-6 rounded bg-gray-50 text-gray-300 text-center leading-6 text-xs">—</span>;
+  }
+  return (
+    <span className={`inline-block w-8 h-6 rounded text-center leading-6 text-xs font-medium ${COVERAGE_COLORS[color]}`}>
+      {num}×
+    </span>
+  );
+}
+
+function formatMonthDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }

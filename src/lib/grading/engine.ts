@@ -4,10 +4,12 @@ import { getStudentState, updateStudentState, StudentStateType } from "../agents
 
 const anthropic = new Anthropic();
 
-// New rubric: Engagement (50) + Problem Understanding (30) + Solution Explanation (20) = 100
-// Engagement: 10 pts per role (Elena, Marcus, Priya, James, Mentor)
-// Understanding: 5 pts per stakeholder (20) + 10 pts mentor quality
-// Explanation: 5 pts per stakeholder (20) — Finals Assessment only
+// Meeting-type-aware rubric:
+// - Part 1 (requirements): engagement + problem_understanding (student shows they understood the need)
+// - Part 2 (solution):     engagement + solution_explanation  (student shows they built something that addresses it)
+// - Part 3 (features):     engagement + problem_understanding (creative proposal tied to real needs)
+// - Practice:              not graded at all
+// - Mentor:                engagement + mentor_quality
 
 interface GradeResult {
   criterion: string;
@@ -24,6 +26,16 @@ export async function gradeConversation(
   agentType: string,
   persona: string | null
 ): Promise<GradeResult[]> {
+  // Read the conversation row so we can honor its meetingType.
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { meetingType: true },
+  });
+  const meetingType = conversation?.meetingType || "requirements";
+
+  // Practice conversations are explicitly non-graded.
+  if (meetingType === "practice") return [];
+
   const messages = await prisma.message.findMany({
     where: { conversationId, role: { not: "system" } },
     orderBy: { timestamp: "asc" },
@@ -38,12 +50,27 @@ export async function gradeConversation(
 
   const personaName = persona || "mentor";
   const isMentor = agentType === "mentor";
-  const isFinalsAssessment = state.conversation_scores.assessment_phase === "finals";
+
+  // Meeting-type descriptors for the grader prompt.
+  const meetingTypeLabel = isMentor
+    ? "Mentor session"
+    : meetingType === "requirements"
+      ? "Part 1 — Requirements Gathering"
+      : meetingType === "solution"
+        ? "Part 2 — Solution Demonstration"
+        : meetingType === "features"
+          ? "Part 3 — Additional Features Proposal"
+          : "Client meeting";
+
+  // Which scoring criteria apply depends on the meeting type.
+  // Part 1 → problem_understanding; Part 2 → solution_explanation; Part 3 → problem_understanding (innovation lens).
+  const gradeSolutionExplanation = !isMentor && meetingType === "solution";
+  const gradeProblemUnderstanding = !isMentor && (meetingType === "requirements" || meetingType === "features");
 
   const gradingPrompt = `You are a grading assistant for a Big Data Infrastructure course. Evaluate this ${agentType} conversation with ${personaName}.
 
 STUDENT: ${state.student_name} (BADM ${state.course})
-ASSESSMENT PHASE: ${isFinalsAssessment ? "Finals Assessment (in-class presentation)" : "Build Phase (ongoing project work)"}
+MEETING TYPE: ${meetingTypeLabel}
 
 <transcript>
 ${transcript}
@@ -52,23 +79,27 @@ ${transcript}
 Grade the following criteria. Return a JSON object with "grades" array:
 
 ${!isMentor ? `
-1. ENGAGEMENT (max 10 pts) — Did the student engage meaningfully?
+1. ENGAGEMENT (max 10 pts) — Did the student engage meaningfully in this ${meetingTypeLabel} meeting?
    9-10: Multi-turn conversation, asked questions, responded to concerns, stayed through a full cycle
    6-8: Engaged but briefly, touched on concern but didn't fully explore
    3-5: Minimal — single superficial exchange
    0-2: Didn't engage or said hello and left
 
-2. PROBLEM UNDERSTANDING (max 5 pts) — Does the student understand this stakeholder's core concern?
+${gradeProblemUnderstanding ? `2. PROBLEM UNDERSTANDING (max 5 pts) — Does the student understand this stakeholder's core concern?
    Only score if engagement >= 3. Otherwise 0.
+   ${meetingType === "requirements"
+     ? `In a Part 1 Requirements meeting, we look for: did the student probe the pain, get specifics, and (most importantly) demonstrate understanding by being able to articulate the stakeholder's top concerns back to them? Reward the teach-back moments.`
+     : `In a Part 3 Features Proposal meeting, we look for: did the student's proposal demonstrate real understanding of an unmet business need for this stakeholder?`}
    4-5: Articulates the stakeholder's core problem with specifics and nuance
    2-3: Understands generally but misses an element
-   0-1: Only vague sense of the problem
+   0-1: Only vague sense of the problem` : ""}
 
-${isFinalsAssessment ? `3. SOLUTION EXPLANATION (max 5 pts) — Can the student explain their solution in this stakeholder's language?
-   Only score during Finals Assessment.
-   4-5: Explains clearly in business terms, connects to stakeholder's specific needs
-   2-3: Adequate but somewhat technical or missing an element
-   0-1: Raw technical terms, stakeholder would be confused` : ""}
+${gradeSolutionExplanation ? `2. SOLUTION EXPLANATION (max 5 pts) — Can the student explain their solution in this stakeholder's language and connect it to the stakeholder's specific pain points from Part 1?
+   Only score if engagement >= 3. Otherwise 0.
+   This is a Part 2 Solution Demonstration meeting — the student should be walking the stakeholder through a concrete build and explaining how it addresses the stakeholder's concerns. Reward business-language explanations, honest acknowledgment of limitations, and ability to handle pushback.
+   4-5: Explains clearly in business terms, directly addresses stakeholder's specific pains, handles pushback well
+   2-3: Adequate but somewhat technical or missing an element; partial pushback handling
+   0-1: Raw technical terms; stakeholder would be confused; or no actual solution presented` : ""}
 ` : `
 1. ENGAGEMENT (max 10 pts) — Did the student engage meaningfully with the Mentor?
    9-10: Multi-turn, asked questions, shared thinking, stayed through hint-reflection cycles
@@ -86,9 +117,15 @@ ${isFinalsAssessment ? `3. SOLUTION EXPLANATION (max 5 pts) — Can the student 
 Return JSON:
 {
   "grades": [
-    { "criterion": "engagement", "persona": "${personaName}", "score": <0-10>, "evidence": ["quote"], "reasoning": "why" },
-    ${!isMentor ? `{ "criterion": "problem_understanding", "persona": "${personaName}", "score": <0-5>, "evidence": ["quote"], "reasoning": "why" }` : `{ "criterion": "mentor_quality", "persona": "mentor", "score": <0-10>, "evidence": ["quote"], "reasoning": "why" }`}
-    ${!isMentor && isFinalsAssessment ? `,{ "criterion": "solution_explanation", "persona": "${personaName}", "score": <0-5>, "evidence": ["quote"], "reasoning": "why" }` : ""}
+    { "criterion": "engagement", "persona": "${personaName}", "score": <0-10>, "evidence": ["quote"], "reasoning": "why" }${
+      isMentor
+        ? `,{ "criterion": "mentor_quality", "persona": "mentor", "score": <0-10>, "evidence": ["quote"], "reasoning": "why" }`
+        : gradeSolutionExplanation
+          ? `,{ "criterion": "solution_explanation", "persona": "${personaName}", "score": <0-5>, "evidence": ["quote"], "reasoning": "why" }`
+          : gradeProblemUnderstanding
+            ? `,{ "criterion": "problem_understanding", "persona": "${personaName}", "score": <0-5>, "evidence": ["quote"], "reasoning": "why" }`
+            : ""
+    }
   ]
 }
 

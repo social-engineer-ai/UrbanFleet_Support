@@ -1,9 +1,51 @@
 import { SOLUTION_ARCHITECTURE, COURSE_KNOWLEDGE_MAP, MENTOR_BEHAVIOR_ADDENDUM, SIMULATOR_INFO, TRADEOFFS_GUIDE } from "./knowledge";
 import { StudentStateType } from "./state";
+import type { ClientCoverage, PersonaId } from "@/lib/coverage";
+
+const PERSONA_LABELS: Record<PersonaId, string> = {
+  elena: "Elena (VP Ops)",
+  marcus: "Marcus (CFO)",
+  priya: "Priya (CTO)",
+  james: "James (Compliance)",
+};
+
+function buildCoverageBlock(coverage: ClientCoverage): string {
+  const rows = (Object.entries(coverage) as [PersonaId, ClientCoverage[PersonaId]][]).map(
+    ([p, c]) =>
+      `  - ${PERSONA_LABELS[p]}: Part 1 (Requirements) ${c.requirements > 0 ? `✓ (${c.requirements}x)` : "— not yet"} | Part 2 (Solution) ${c.solution > 0 ? `✓ (${c.solution}x)` : "— not yet"}${c.features > 0 ? ` | Part 3 (Features) ✓ (${c.features}x)` : ""}`
+  );
+
+  const missingRequirements = (Object.entries(coverage) as [PersonaId, ClientCoverage[PersonaId]][])
+    .filter(([, c]) => c.requirements === 0)
+    .map(([p]) => PERSONA_LABELS[p]);
+  const missingSolution = (Object.entries(coverage) as [PersonaId, ClientCoverage[PersonaId]][])
+    .filter(([, c]) => c.requirements > 0 && c.solution === 0)
+    .map(([p]) => PERSONA_LABELS[p]);
+
+  let guidance = "";
+  if (missingRequirements.length > 0) {
+    guidance += `\n  NUDGE: This student has NOT yet had Part 1 (Requirements) meetings with: ${missingRequirements.join(", ")}. Proactively remind them — each of these stakeholders has unique concerns that should shape the design, and skipping any of them weakens the solution. Don't push hard, but mention it when relevant.`;
+  }
+  if (missingSolution.length > 0) {
+    guidance += `\n  NUDGE: Student has done Part 1 with ${missingSolution.join(", ")} but has NOT yet presented a solution (Part 2) to them. Once they've built something, remind them: "You still need to present what you've built to [name]. That's where your 'Solution Presentation' and 'Handling Pushback' grades come from."`;
+  }
+  if (missingRequirements.length === 0 && missingSolution.length === 0) {
+    guidance += `\n  COVERAGE COMPLETE: The student has completed both Part 1 and Part 2 with all four stakeholders. If they come to you, it's for refinement or stretch work. You can encourage them to explore Part 3 (optional features proposal) if they want to go above and beyond.`;
+  }
+
+  return `=== CLIENT MEETING COVERAGE ===
+The expectation is Part 1 (Requirements) + Part 2 (Solution) with all four stakeholders — 8 core meetings total. Part 3 (Features proposal) is optional stretch work.
+
+${rows.join("\n")}
+${guidance}
+
+Use this coverage information to guide the student proactively. If they're asking architecture questions but haven't met all four stakeholders for Part 1 yet, suggest meeting the missing ones first — a design that doesn't account for all four perspectives is incomplete. If they're deep in the build but haven't come back for any Part 2 meetings, nudge them to book those meetings soon.`;
+}
 
 export function buildMentorSystemPrompt(
   studentState: StudentStateType,
-  conversationSummaries: string[]
+  conversationSummaries: string[],
+  coverage?: ClientCoverage,
 ): string {
   const sessionNumber = studentState.conversation_scores.total_sessions + 1;
   const is558 = studentState.course === "558";
@@ -261,6 +303,8 @@ Student: ${studentState.student_name}
 Course: BADM ${studentState.course}
 Session number: ${sessionNumber}
 Client meetings so far: ${studentState.conversation_scores.total_meetings}
+
+${coverage ? buildCoverageBlock(coverage) : ""}
 
 Requirements uncovered: ${uncoveredReqs.length > 0 ? uncoveredReqs.join(", ") : "None yet"}
 Requirements NOT yet uncovered: ${missingReqs.join(", ")}

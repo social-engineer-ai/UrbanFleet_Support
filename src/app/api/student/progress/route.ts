@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getStudentState } from "@/lib/agents/state";
+import { computeClientCoverage, coverageTotals } from "@/lib/coverage";
+import { DEADLINES } from "@/lib/deadlines";
 
 export async function GET() {
   const session = await auth();
@@ -54,6 +56,10 @@ export async function GET() {
   const mentorSessions = conversations.filter((c) => c.agentType === "mentor").length;
   const personasMet = [...new Set(conversations.filter((c) => c.agentType === "client").map((c) => c.persona))];
 
+  // Per-type, per-persona coverage for the new dashboard sections
+  const coverage = await computeClientCoverage(session.user.id);
+  const coverageTotalsData = coverageTotals(coverage);
+
   // Engagement scores per persona
   const engagement = state.conversation_scores.engagement || {};
   const engagementTotal = Object.values(engagement).reduce((sum: number, v) => sum + (v as number || 0), 0);
@@ -81,6 +87,9 @@ export async function GET() {
       totalMeetings: state.conversation_scores.total_meetings,
       totalSessions: state.conversation_scores.total_sessions,
     },
+    coverage,
+    coverageTotals: coverageTotalsData,
+    deadlines: DEADLINES,
     engagement: {
       elena: engagement.elena || 0,
       marcus: engagement.marcus || 0,

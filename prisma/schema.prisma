@@ -48,6 +48,7 @@ model Conversation {
   userId       String
   agentType    String
   persona      String?
+  meetingType  String    @default("requirements")
   startedAt    DateTime  @default(now())
   endedAt      DateTime?
   summary      String?
