@@ -22,15 +22,23 @@ npm ci --production=false
 echo "--- Generating Prisma client ---"
 npx prisma generate
 
-# Pause Litestream so Prisma can hold the migrations lock cleanly.
-# Resumed at the end of the deploy. Data loss risk is zero — Litestream
-# catches up from the latest WAL checkpoint when it restarts.
+# Stop everything that holds the SQLite file before running migrations.
+# Both PM2 (the app's Prisma connection pool) and Litestream (continuous
+# replication) hold open handles. With either running, prisma migrate
+# deploy fails with "database is locked". Both restart at the end.
 LITESTREAM_WAS_ACTIVE=0
 if systemctl is-active --quiet litestream 2>/dev/null; then
   LITESTREAM_WAS_ACTIVE=1
   echo "--- Pausing Litestream for migrations ---"
   sudo systemctl stop litestream
 fi
+
+echo "--- Stopping app for migrations ---"
+pm2 stop stakeholdersim 2>/dev/null || true
+
+# Force a WAL checkpoint so any pending writes are merged into the main
+# DB file before Prisma touches it. Belt-and-suspenders against stale lock state.
+sqlite3 prisma/prisma/dev.db "PRAGMA wal_checkpoint(TRUNCATE);" || true
 
 # Run migrations
 echo "--- Running database migrations ---"
@@ -52,10 +60,9 @@ bash scripts/install_backups.sh || echo "WARNING: backup cron install failed (no
 echo "--- Building Next.js ---"
 npm run build
 
-# Restart with PM2
+# Restart with PM2 (was stopped before migrations)
 echo "--- Restarting application ---"
-pm2 stop stakeholdersim 2>/dev/null || true
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.js 2>/dev/null || pm2 restart stakeholdersim
 pm2 save
 
 # Resume Litestream if we paused it
