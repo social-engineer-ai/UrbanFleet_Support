@@ -111,7 +111,8 @@ export async function POST(req: NextRequest) {
   if (agentType === "client") {
     initialMessage = getClientInitialMessage(
       persona,
-      studentState.conversation_scores.total_meetings
+      studentState.conversation_scores.total_meetings,
+      studentState.course
     );
   } else {
     initialMessage = getMentorInitialMessage(
