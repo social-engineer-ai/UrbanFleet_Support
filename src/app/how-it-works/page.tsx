@@ -136,9 +136,11 @@ export default function HowItWorksPage() {
             ))}
           </div>
           <p className="text-xs text-gray-500 mt-3">
-            Deadlines are soft — you can still meet with stakeholders after a deadline passes. But
-            the stakeholder and Mentor will both start nudging you, and the grading reflects the
-            expected sequence.
+            Deadlines are targets, not hard locks — the buttons keep working afterward. But use
+            them as your guide: each stakeholder&apos;s grading focus matches the part that&apos;s
+            currently active, so a solution meeting held before you&apos;ve built anything (or a
+            requirements meeting held after you were supposed to be presenting) just won&apos;t score
+            as well.
           </p>
         </Section>
 
