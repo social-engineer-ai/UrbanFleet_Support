@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { analyzeConversationAndUpdateState } from "@/lib/agents/state";
+import { sendInstructorAlert } from "@/lib/email";
 
 const anthropic = new Anthropic();
 
@@ -129,6 +130,16 @@ export async function POST(
         controller.close();
       } catch (error) {
         console.error("Claude API error:", error);
+        const errMsg = error instanceof Error ? error.message : String(error);
+        void sendInstructorAlert(
+          "Claude API error during student conversation",
+          `A student hit a Claude API error mid-conversation. They saw "Failed to generate response" and their message attempt was lost.\n\nAgent: ${conversation.agentType}${conversation.persona ? ` / ${conversation.persona}` : ""}\nError: ${errMsg}\n\nLikely causes:\n- Anthropic API outage or rate limit\n- Invalid ANTHROPIC_API_KEY (check /opt/stakeholdersim/.env)\n- Model name deprecated (currently claude-sonnet-4-20250514 — check if still supported)\n- Context window exceeded (this conversation has ${conversation.messageCount} messages)`,
+          {
+            category: "claude_api_error",
+            studentEmail: session.user.email || undefined,
+            conversationId,
+          }
+        );
         controller.enqueue(
           encoder.encode(
             `data: ${JSON.stringify({ error: "Failed to generate response" })}\n\n`

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { analyzeConversationAndUpdateState } from "@/lib/agents/state";
 import { gradeAndUpdateConversation } from "@/lib/grading/engine";
+import { sendInstructorAlert } from "@/lib/email";
 
 export async function POST(
   _req: NextRequest,
@@ -41,13 +42,27 @@ export async function POST(
     messages.map((m) => ({ role: m.role, content: m.content }))
   );
 
-  // Grade the conversation (runs in parallel-ish — doesn't block the response)
+  // Grade the conversation (runs in parallel-ish — doesn't block the response).
+  // Grading failures are silent to the student but would skew final scores, so
+  // alert the instructor so they can re-run grading manually if needed.
   gradeAndUpdateConversation(
     session.user.id,
     conversationId,
     conversation.agentType,
     conversation.persona
-  ).catch((err) => console.error("Grading error (non-blocking):", err));
+  ).catch((err) => {
+    console.error("Grading error (non-blocking):", err);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    void sendInstructorAlert(
+      "Grading failed (non-blocking)",
+      `A conversation ended successfully but the grading step failed. The conversation transcript is saved but no score was recorded — you may want to re-run grading for this conversation manually.\n\nAgent: ${conversation.agentType}${conversation.persona ? ` / ${conversation.persona}` : ""}\nError: ${errMsg}`,
+      {
+        category: "grading_error",
+        studentEmail: session.user.email || undefined,
+        conversationId,
+      }
+    );
+  });
 
   // Mark conversation as ended
   await prisma.conversation.update({
