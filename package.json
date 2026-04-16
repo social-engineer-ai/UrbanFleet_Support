@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.82.0",
     "@aws-sdk/client-s3": "^3.1025.0",
     "@prisma/client": "^6.19.3",
+    "@tailwindcss/typography": "^0.5.19",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.1",
     "lucide-react": "^1.7.0",
@@ -20,7 +21,9 @@
     "nodemailer": "^7.0.13",
     "prisma": "^6.19.3",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
