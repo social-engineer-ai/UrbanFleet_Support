@@ -148,8 +148,8 @@ export default function HowItWorksPage() {
           <p className="mb-3">
             Your <strong>individual grade on this platform</strong> (100 points) comes from your
             conversations: 80 points for Client meetings and 20 points for Mentor sessions. Your
-            <strong> team grade</strong> comes from the actual build in AWS, the Architecture
-            Decision Log, and the final presentation.
+            <strong> team grade</strong> comes from the actual build in AWS and the final
+            presentation. <em>(BADM 558 teams also submit an Architecture Decision Log — see below.)</em>
           </p>
 
           <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -195,7 +195,7 @@ export default function HowItWorksPage() {
             <li>• <strong>Use Practice mode if you&apos;re nervous.</strong> No stakes, just feedback. Rehearse a pitch before you do it for real.</li>
             <li>• <strong>Come back to the Mentor often.</strong> A few short sessions at decision points beats one marathon at the end. The &quot;Independence growth&quot; criterion rewards showing up at multiple moments.</li>
             <li>• <strong>Propose a solution, don&apos;t ask for one.</strong> The Mentor rewards students who share their thinking first. &quot;Here&apos;s what I&apos;m considering — thoughts?&quot; beats &quot;What should I use?&quot;</li>
-            <li>• <strong>Document decisions as you go.</strong> Your Architecture Decision Log needs at least 6 decisions with reasoning and trade-offs. Don&apos;t leave it to the last day.</li>
+            <li>• <strong>(558 only) Document decisions as you go.</strong> Your Architecture Decision Log needs at least 6 decisions with reasoning and trade-offs. Don&apos;t leave it to the last day. The Mentor will help you review them.</li>
             <li>• <strong>If you&apos;re stuck or overwhelmed,</strong> say so. The Mentor adjusts when you tell it you&apos;re frustrated or nervous.</li>
           </ul>
         </Section>

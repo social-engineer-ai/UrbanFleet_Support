@@ -275,7 +275,9 @@ export default function ProgressPage() {
           {/* Build Progress */}
           <div className="bg-white rounded-xl border p-6">
             <h2 className="font-semibold text-gray-900 mb-1">Build Progress</h2>
-            <p className="text-xs text-gray-500 mb-4">{progress.decisionsCount} architecture decisions documented</p>
+            {progress.course === "558" && (
+              <p className="text-xs text-gray-500 mb-4">{progress.decisionsCount} architecture decisions documented</p>
+            )}
             <div className="space-y-3">
               {progress.phases.map((phase) => {
                 const style = PHASE_STATUS[phase.status] || PHASE_STATUS.not_started;
@@ -290,7 +292,7 @@ export default function ProgressPage() {
               })}
             </div>
 
-            {progress.decisionsCount < 6 && (
+            {progress.course === "558" && progress.decisionsCount < 6 && (
               <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
                 <p className="text-xs text-amber-800">
                   You need at least 6 architecture decisions for the Decision Log. You have {progress.decisionsCount} so far.
