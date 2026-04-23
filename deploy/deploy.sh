@@ -56,6 +56,12 @@ sqlite3 prisma/dev.db "PRAGMA journal_mode=WAL;"
 echo "--- Ensuring backup cron installed ---"
 bash scripts/install_backups.sh || echo "WARNING: backup cron install failed (non-blocking)"
 
+# Install / refresh 5-minute idle-end cron (idempotent). Closes out
+# conversations the student abandoned without clicking End Session, so their
+# requirements_uncovered / hint_log / grades actually get updated.
+echo "--- Ensuring idle-end cron installed ---"
+bash scripts/install_idle_end_cron.sh || echo "WARNING: idle-end cron install failed (non-blocking)"
+
 # Build the app
 echo "--- Building Next.js ---"
 npm run build

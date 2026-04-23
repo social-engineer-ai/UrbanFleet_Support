@@ -5,6 +5,7 @@ import { getStudentState, getConversationSummaries } from "@/lib/agents/state";
 import { buildClientSystemPrompt, getClientInitialMessage } from "@/lib/agents/client";
 import { buildMentorSystemPrompt, getMentorInitialMessage } from "@/lib/agents/mentor";
 import { computeClientCoverage, type MeetingType } from "@/lib/coverage";
+import { endConversation } from "@/lib/conversations/end";
 
 const CONVERSATION_MESSAGE_LIMIT = 200;
 
@@ -96,6 +97,14 @@ export async function POST(req: NextRequest) {
   if (existingConversation) {
     // If under the message limit, resume it
     if (existingConversation.messageCount < CONVERSATION_MESSAGE_LIMIT) {
+      // Starting a new conversation is also our best signal that the student
+      // has moved on from any OTHER open conversations they have. Analyze +
+      // grade those now so they get credit for the work they already did,
+      // rather than letting state updates wait for the (often-never) manual
+      // "End Session" click. Runs in the background so it doesn't block the
+      // resume response.
+      void endOtherOpenConversations(session.user.id, existingConversation.id);
+
       return Response.json({
         conversationId: existingConversation.id,
         resumed: true,
@@ -105,24 +114,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Over the limit — auto-end the old conversation and start fresh
-    const messages = await prisma.message.findMany({
-      where: { conversationId: existingConversation.id, role: { not: "system" } },
-      orderBy: { timestamp: "asc" },
+    // Over the limit — auto-end the old conversation and start fresh.
+    await endConversation(session.user.id, existingConversation.id, {
+      catchGradeErrors: true,
     });
-
-    const { analyzeConversationAndUpdateState } = await import("@/lib/agents/state");
-    const { summary } = await analyzeConversationAndUpdateState(
-      session.user.id,
-      agentType,
-      resolvedPersona,
-      messages.map((m) => ({ role: m.role, content: m.content }))
-    );
-
-    await prisma.conversation.update({
-      where: { id: existingConversation.id },
-      data: { endedAt: new Date(), summary },
-    });
+  } else {
+    // No resume target — still sweep any unrelated open conversations.
+    void endOtherOpenConversations(session.user.id, null);
   }
 
   // Create a new conversation
@@ -212,3 +210,45 @@ export async function POST(req: NextRequest) {
   });
 }
 
+// Fire-and-forget sweeper: find all open conversations for this user other
+// than `keepOpenId` (the one we're about to resume, if any) and end them.
+// Uses the last-message timestamp as endedAt so chronology stays honest.
+//
+// Runs in the background from POST /api/conversations — if it throws, log
+// and move on; the idle-end cron will catch anything that leaks.
+async function endOtherOpenConversations(userId: string, keepOpenId: string | null) {
+  try {
+    const openConvs = await prisma.conversation.findMany({
+      where: {
+        userId,
+        endedAt: null,
+        ...(keepOpenId ? { NOT: { id: keepOpenId } } : {}),
+      },
+      select: { id: true },
+    });
+
+    for (const c of openConvs) {
+      const lastMsg = await prisma.message.findFirst({
+        where: { conversationId: c.id, role: { not: "system" } },
+        orderBy: { timestamp: "desc" },
+        select: { timestamp: true },
+      });
+      try {
+        await endConversation(userId, c.id, {
+          endedAt: lastMsg?.timestamp ?? new Date(),
+          catchGradeErrors: true,
+        });
+      } catch (err) {
+        console.error(
+          `endOtherOpenConversations: failed for ${c.id}:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+  } catch (err) {
+    console.error(
+      "endOtherOpenConversations: top-level error:",
+      err instanceof Error ? err.message : err
+    );
+  }
+}
