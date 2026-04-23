@@ -31,8 +31,19 @@ cat > "$WRAPPER_PATH" <<'EOF'
 #!/bin/bash
 # Wrapper for the idle-end cron. Loads .env (for DATABASE_URL and
 # ANTHROPIC_API_KEY) and invokes tsx with a full PATH.
+#
+# flock guard: if a previous invocation is still running when the next
+# */5-min cron fires, exit immediately instead of starting a concurrent
+# pass. Without this, a slow Claude API day produces a snowball of
+# overlapping tsx processes all racing on the same conversations.
 set -e
 APP_DIR="/opt/stakeholdersim"
+LOCK_FILE="/tmp/stakeholdersim-idle-end.lock"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") idle-end skipped: previous run still active"
+  exit 0
+fi
 cd "$APP_DIR"
 set -a
 source "$APP_DIR/.env"
