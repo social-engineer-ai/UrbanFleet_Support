@@ -83,6 +83,31 @@ export async function POST(
   const stream = new ReadableStream({
     async start(controller) {
       let fullResponse = "";
+      // Track controller state so catch-path operations don't throw
+      // "Invalid state: Controller is already closed" when the browser
+      // has dropped the SSE connection mid-stream.
+      let streamClosed = false;
+
+      const safeEnqueue = (data: Uint8Array) => {
+        if (streamClosed) return false;
+        try {
+          controller.enqueue(data);
+          return true;
+        } catch {
+          streamClosed = true;
+          return false;
+        }
+      };
+
+      const safeClose = () => {
+        if (streamClosed) return;
+        streamClosed = true;
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
+      };
 
       try {
         const claudeStream = anthropic.messages.stream({
@@ -96,29 +121,35 @@ export async function POST(
           if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
             const text = event.delta.text;
             fullResponse += text;
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ text })}\n\n`)
-            );
+            if (!safeEnqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`))) {
+              // Client disconnected — stop streaming from Claude too, but
+              // keep going to save whatever we have so far so the student's
+              // work isn't lost.
+              break;
+            }
           }
         }
 
-        // Save assistant response to DB
-        await prisma.message.create({
-          data: {
-            conversationId,
-            role: "assistant",
-            content: fullResponse,
-          },
-        });
+        // Save assistant response to DB (even if client disconnected, so the
+        // partial response is preserved for when they come back).
+        if (fullResponse.length > 0) {
+          await prisma.message.create({
+            data: {
+              conversationId,
+              role: "assistant",
+              content: fullResponse,
+            },
+          });
 
-        // Update message count
-        await prisma.conversation.update({
-          where: { id: conversationId },
-          data: { messageCount: conversation.messageCount + 2 },
-        });
+          // Update message count only if we saved something
+          await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { messageCount: conversation.messageCount + 2 },
+          });
+        }
 
-        // Send remaining messages info
-        controller.enqueue(
+        // Send remaining messages info (no-op if already disconnected)
+        safeEnqueue(
           encoder.encode(
             `data: ${JSON.stringify({
               done: true,
@@ -127,25 +158,42 @@ export async function POST(
           )
         );
 
-        controller.close();
+        safeClose();
       } catch (error) {
-        console.error("Claude API error:", error);
         const errMsg = error instanceof Error ? error.message : String(error);
-        void sendInstructorAlert(
-          "Claude API error during student conversation",
-          `A student hit a Claude API error mid-conversation. They saw "Failed to generate response" and their message attempt was lost.\n\nAgent: ${conversation.agentType}${conversation.persona ? ` / ${conversation.persona}` : ""}\nError: ${errMsg}\n\nLikely causes:\n- Anthropic API outage or rate limit\n- Invalid ANTHROPIC_API_KEY (check /opt/stakeholdersim/.env)\n- Model name deprecated (currently claude-sonnet-4-20250514 — check if still supported)\n- Context window exceeded (this conversation has ${conversation.messageCount} messages)`,
-          {
-            category: "claude_api_error",
-            studentEmail: session.user.email || undefined,
-            conversationId,
-          }
-        );
-        controller.enqueue(
+
+        // A client disconnect (browser closed tab, network dropped) surfaces as
+        // either "Controller is already closed" or an AbortError. Those are
+        // routine — the student saw nothing because they weren't looking. Don't
+        // page the instructor for these.
+        const isClientDisconnect =
+          errMsg.includes("Controller is already closed") ||
+          errMsg.toLowerCase().includes("aborted") ||
+          (error instanceof Error && error.name === "AbortError");
+
+        if (isClientDisconnect) {
+          console.log(
+            `Client disconnected mid-stream (benign): ${conversation.agentType}/${conversation.persona ?? "mentor"} conv=${conversationId}`
+          );
+        } else {
+          console.error("Claude streaming error:", error);
+          void sendInstructorAlert(
+            "Claude streaming error during student conversation",
+            `A student hit an error mid-conversation. They saw "Failed to generate response"; the user message they sent IS saved, but the assistant reply was not generated.\n\nAgent: ${conversation.agentType}${conversation.persona ? ` / ${conversation.persona}` : ""}\nError: ${errMsg}\n\nLikely causes (in order of frequency):\n- Anthropic API outage or rate limit (check https://status.anthropic.com)\n- Context window exceeded (this conversation has ${conversation.messageCount} messages)\n- Model name deprecated (currently claude-sonnet-4-20250514 — check if still supported)\n- Invalid ANTHROPIC_API_KEY (check /opt/stakeholdersim/.env)\n\nNote: "Controller is already closed" and AbortError-type errors are benign client disconnects and are now suppressed from these alerts.`,
+            {
+              category: "claude_api_error",
+              studentEmail: session.user.email || undefined,
+              conversationId,
+            }
+          );
+        }
+
+        safeEnqueue(
           encoder.encode(
             `data: ${JSON.stringify({ error: "Failed to generate response" })}\n\n`
           )
         );
-        controller.close();
+        safeClose();
       }
     },
   });
