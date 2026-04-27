@@ -16,8 +16,10 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Password must be at least 6 characters" }, { status: 400 });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     // Validate UIUC email
-    if (!email.endsWith("@illinois.edu")) {
+    if (!normalizedEmail.endsWith("@illinois.edu")) {
       return Response.json(
         { error: "Must use an @illinois.edu email address" },
         { status: 400 }
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if already registered and verified
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing && existing.emailVerified) {
       return Response.json({ error: "Email already registered" }, { status: 400 });
     }
@@ -51,7 +53,7 @@ export async function POST(req: NextRequest) {
     const hashed = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: {
-        email,
+        email: normalizedEmail,
         password: hashed,
         name,
         role: "student",
@@ -65,7 +67,7 @@ export async function POST(req: NextRequest) {
     const otp = generateOtp();
     await prisma.otpCode.create({
       data: {
-        email,
+        email: normalizedEmail,
         code: otp,
         purpose: "verify_email",
         expiresAt: new Date(Date.now() + 10 * 60 * 1000),
@@ -74,7 +76,7 @@ export async function POST(req: NextRequest) {
 
     // Send OTP email — if it fails, surface a real error to the student so they know to retry
     // or contact the instructor. (The instructor has already been alerted by sendOtpEmail.)
-    const sent = await sendOtpEmail(email, otp);
+    const sent = await sendOtpEmail(normalizedEmail, otp);
     if (!sent) {
       return Response.json(
         {

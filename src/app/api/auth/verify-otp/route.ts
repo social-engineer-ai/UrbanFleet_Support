@@ -8,12 +8,14 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Email and code required" }, { status: 400 });
   }
 
+  const normalized = email.trim().toLowerCase();
+
   // Find valid OTP (scoped to email-verification codes — password-reset codes
   // live in the same table but have purpose = "reset_password" and must not be
   // accepted here, since this route also creates the StudentState row).
   const otpRecord = await prisma.otpCode.findFirst({
     where: {
-      email,
+      email: normalized,
       code,
       purpose: "verify_email",
       used: false,
@@ -36,13 +38,13 @@ export async function POST(req: NextRequest) {
   });
 
   // Mark user as verified
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email: normalized } });
   if (!user) {
     return Response.json({ error: "User not found" }, { status: 404 });
   }
 
   await prisma.user.update({
-    where: { email },
+    where: { email: normalized },
     data: { emailVerified: true },
   });
 

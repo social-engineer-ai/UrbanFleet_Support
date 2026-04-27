@@ -10,14 +10,16 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Email required" }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const normalized = email.trim().toLowerCase();
+
+    const user = await prisma.user.findUnique({ where: { email: normalized } });
     if (!user || user.emailVerified) {
       return Response.json({ error: "Invalid request" }, { status: 400 });
     }
 
     // Invalidate old verify-email OTPs (don't touch password-reset codes for this email)
     await prisma.otpCode.updateMany({
-      where: { email, purpose: "verify_email", used: false },
+      where: { email: normalized, purpose: "verify_email", used: false },
       data: { used: true },
     });
 
@@ -25,14 +27,14 @@ export async function POST(req: NextRequest) {
     const otp = generateOtp();
     await prisma.otpCode.create({
       data: {
-        email,
+        email: normalized,
         code: otp,
         purpose: "verify_email",
         expiresAt: new Date(Date.now() + 10 * 60 * 1000),
       },
     });
 
-    const sent = await sendOtpEmail(email, otp);
+    const sent = await sendOtpEmail(normalized, otp);
     if (!sent) {
       return Response.json(
         {
