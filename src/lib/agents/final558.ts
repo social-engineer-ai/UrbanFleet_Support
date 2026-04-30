@@ -445,6 +445,11 @@ export function buildPersonaSystemPrompt(
     `The other three stakeholders are: ${others}.`,
     `Minutes remaining in the session: ${minutesLeft}.`,
     `Your coverage of this student so far: ${coverageList}.`,
+    "",
+    "=== CONVERSATION TRANSCRIPT FORMAT ===",
+    `Each prior assistant turn in the conversation history is prefixed with the speaker's name in brackets, e.g. "[${me.name}]: ..." for your own past turns and "[Other Name]: ..." for the other stakeholders' turns. Read those labels carefully. Do NOT confuse another stakeholder's words for your own. You are speaking only as ${me.name}; if you see a turn labeled with someone else's name, that was THEM, not you. Continue the conversation as ${me.name} without restating who you are unless the context demands a brief introduction (handoff or forced entry, handled separately).`,
+    `Your NEW response must NOT include the "[${me.name}]:" prefix — write only what you would say. The system adds the label automatically when storing your turn.`,
+    "",
     ctx.spokenBefore[persona]
       ? "You have spoken with this student earlier in this session. Pick up where you left off; do not re-introduce yourself."
       : "This is your first turn with this student. The handoff opener is being posted by the system; respond to whatever the student says next as a continuation.",

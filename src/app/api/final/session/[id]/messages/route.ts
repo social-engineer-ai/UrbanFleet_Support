@@ -11,6 +11,7 @@ import {
   HANDOFF_OPENERS,
   FORCED_ENTRY_OPENERS,
   pickForcedEntry,
+  STAKEHOLDER_INFO,
   type Final558Stakeholder,
   type SessionContext,
   FINAL_STAKEHOLDERS,
@@ -224,7 +225,7 @@ export async function POST(
   const allMessages = await prisma.message.findMany({
     where: { conversationId, role: { not: "system" } },
     orderBy: { timestamp: "asc" },
-    select: { role: true, content: true },
+    select: { role: true, content: true, metadata: true },
   });
 
   const myCoverageRows = finalSession.coverage.filter(
@@ -267,14 +268,27 @@ export async function POST(
 
   const systemPrompt = buildPersonaSystemPrompt(next, ctx);
 
-  // Compose the messages we send to Claude. If we're posting a handoff or
-  // forced-entry opener, we include it in the conversation as a leading
-  // assistant message *with a synthetic instruction* so the model continues
-  // from there rather than re-introducing itself.
-  const claudeMessages = allMessages.map((m) => ({
-    role: m.role as "user" | "assistant",
-    content: m.content,
-  }));
+  // Compose the messages we send to Claude. Each prior assistant turn is
+  // prefixed with the speaker's name in brackets so the persona can read the
+  // transcript and stay in its own role rather than thinking "I said that"
+  // when reading another stakeholder's words. The current persona's own
+  // prior turns get the same prefix; the system prompt instructs the model
+  // not to include the prefix in its NEW response (we strip it defensively
+  // on save below).
+  const claudeMessages = allMessages.map((m) => {
+    if (m.role === "assistant") {
+      const sh = parseStakeholder(m.metadata);
+      const speaker = sh ? STAKEHOLDER_INFO[sh].name : "Stakeholder";
+      return {
+        role: "assistant" as const,
+        content: `[${speaker}]: ${m.content}`,
+      };
+    }
+    return {
+      role: "user" as const,
+      content: m.content,
+    };
+  });
 
   if (prependedOpener) {
     // Insert the opener as a guidance instruction the model continues from.
@@ -380,11 +394,15 @@ export async function POST(
         }
 
         if (fullResponse.length > 0) {
+          // Defensive: strip any leading "[Speaker Name]: " prefix the model
+          // might echo back from the labeled-transcript context. The system
+          // prompt tells it not to, but we don't trust unverified output.
+          const cleaned = stripSpeakerPrefix(fullResponse, next);
           await prisma.message.create({
             data: {
               conversationId,
               role: "assistant",
-              content: fullResponse,
+              content: cleaned,
               metadata: JSON.stringify({
                 stakeholder: next,
                 forced: isForced,
@@ -460,6 +478,27 @@ function computeSilenceSeconds(s: {
     priya: sec(s.lastSpokePriya),
     james: sec(s.lastSpokeJames),
   };
+}
+
+// Strip a leading "[Name]: " or "[Name Name]: " prefix from a response.
+// The model is instructed not to add this, but if it does (echoing the
+// labeled transcript convention) we remove it before persisting so the
+// stored transcript stays clean.
+function stripSpeakerPrefix(text: string, current: Final558Stakeholder): string {
+  const trimmed = text.replace(/^\s*/, "");
+  // Try the current speaker's full name first, then any of the four names,
+  // then a permissive bracketed fallback.
+  const names = FINAL_STAKEHOLDERS.map((s) => STAKEHOLDER_INFO[s].name);
+  // Move current to front so the most-likely match is tried first.
+  const ordered = [STAKEHOLDER_INFO[current].name, ...names.filter((n) => n !== STAKEHOLDER_INFO[current].name)];
+  for (const name of ordered) {
+    const re = new RegExp(`^\\[${name.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\]:\\s*`);
+    if (re.test(trimmed)) return trimmed.replace(re, "");
+  }
+  // Fallback: any "[Anything]: " at the start
+  const generic = /^\[[^\]\n]{1,40}\]:\s*/;
+  if (generic.test(trimmed)) return trimmed.replace(generic, "");
+  return text;
 }
 
 async function stakeholderEverSpoken(
