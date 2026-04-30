@@ -148,7 +148,7 @@ Output the grading JSON now.`;
 
   // Settings may override the default weights.
   const settings = await prisma.final558Settings.findUnique({
-    where: { course: "BADM 558" },
+    where: { course: "558" },
   });
   let weights = DEFAULT_WEIGHTS;
   if (settings?.weights) {

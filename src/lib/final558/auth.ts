@@ -16,7 +16,10 @@ const MAX_FAILURES = 5;
 const LOCKOUT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const LOCKOUT_DURATION_MS = 60 * 60 * 1000; // 1 hour
 
-const FINAL_558_COURSE = "BADM 558";
+// Matches the value stored in User.course on existing accounts (just the
+// number, no "BADM " prefix). Same string is used as the unique key on
+// Final558Settings.course so one cohort row gates one course label.
+const FINAL_558_COURSE = "558";
 
 // === Cookie ============================================================
 // We sign with HMAC-SHA256. The secret comes from FINAL_558_COOKIE_SECRET;

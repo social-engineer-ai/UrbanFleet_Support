@@ -59,7 +59,7 @@ function ErrorScreen({
     case "wrong_course":
       heading = "This final is for BADM 558.";
       body =
-        "Your account is registered for BADM 358. The 558 final is not available to your section.";
+        "Your account is not registered for BADM 558. The 558 final is not available to your section.";
       break;
     case "outside_window":
       heading = "Your final is not currently available.";

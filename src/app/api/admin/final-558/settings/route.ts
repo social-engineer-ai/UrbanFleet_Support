@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-const FINAL_558_COURSE = "BADM 558";
+const FINAL_558_COURSE = "558";
 
 async function requireInstructor() {
   const session = await auth();

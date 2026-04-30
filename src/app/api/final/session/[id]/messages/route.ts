@@ -75,7 +75,7 @@ export async function POST(
 
   // Server-authoritative timer check. If we're past the hard cutoff, refuse.
   const settings = await prisma.final558Settings.findUnique({
-    where: { course: "BADM 558" },
+    where: { course: "558" },
   });
   const hardCutoffSec = settings?.hardCutoffAt ?? 4200;
   const forcedEntrySec = settings?.forcedEntryAt ?? 1320;
@@ -615,7 +615,7 @@ export async function GET(
   }
 
   const settings = await prisma.final558Settings.findUnique({
-    where: { course: "BADM 558" },
+    where: { course: "558" },
   });
   const hardCutoffSec = settings?.hardCutoffAt ?? 4200;
   const elapsedSec = Math.floor(
