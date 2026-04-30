@@ -155,6 +155,12 @@ export async function POST(
   let isForced = false;
   let routerRationale = "";
 
+  // Build "ever spoken" up-front. Forced entry should only fire on
+  // stakeholders who have never had a turn — once Elena/Marcus/Priya/James
+  // have spoken at all, dragging them back in with "Sorry to cut in"
+  // misreads as a bug.
+  const everSpoken = await computeEverSpoken(conversationId);
+
   const forcedTarget = pickForcedEntry({
     recentMessages: recentMsgs.map((m) => ({
       role: m.role as "user" | "assistant",
@@ -165,6 +171,7 @@ export async function POST(
     silenceSeconds,
     forcedAlready,
     forcedEntryThresholdSeconds: forcedEntrySec,
+    everSpoken,
   });
 
   if (forcedTarget) {
@@ -238,20 +245,8 @@ export async function POST(
     C4: myCoverageRows.some((c) => c.point === "C4") || (next === previousActive && coverageCovered.includes("C4")),
   };
 
-  const spokenBefore: Record<Final558Stakeholder, boolean> = {
-    elena: false,
-    marcus: false,
-    priya: false,
-    james: false,
-  };
-  const allMessagesFull = await prisma.message.findMany({
-    where: { conversationId, role: "assistant" },
-    select: { metadata: true },
-  });
-  for (const m of allMessagesFull) {
-    const sh = parseStakeholder(m.metadata);
-    if (sh) spokenBefore[sh] = true;
-  }
+  // We already computed everSpoken above for the forced-entry decision; reuse.
+  const spokenBefore = everSpoken;
 
   const studentUser = await prisma.user.findUnique({
     where: { id: userId },
@@ -499,6 +494,30 @@ function stripSpeakerPrefix(text: string, current: Final558Stakeholder): string 
   const generic = /^\[[^\]\n]{1,40}\]:\s*/;
   if (generic.test(trimmed)) return trimmed.replace(generic, "");
   return text;
+}
+
+// Returns a map of stakeholder → has-spoken-at-all in this conversation.
+// Used both by the forced-entry picker (to avoid re-forcing someone who
+// already had their turn) and by the persona prompt (so handoff openers
+// only fire on first appearances).
+async function computeEverSpoken(
+  conversationId: string
+): Promise<Record<Final558Stakeholder, boolean>> {
+  const result: Record<Final558Stakeholder, boolean> = {
+    elena: false,
+    marcus: false,
+    priya: false,
+    james: false,
+  };
+  const rows = await prisma.message.findMany({
+    where: { conversationId, role: "assistant" },
+    select: { metadata: true },
+  });
+  for (const m of rows) {
+    const sh = parseStakeholder(m.metadata);
+    if (sh) result[sh] = true;
+  }
+  return result;
 }
 
 async function stakeholderEverSpoken(

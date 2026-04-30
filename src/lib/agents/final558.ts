@@ -539,8 +539,19 @@ Output the routing JSON now.`;
 
 // Decide forced entry server-side BEFORE calling the router LLM.
 // Returns the stakeholder to force, or null.
-export function pickForcedEntry(input: RouterInput): Final558Stakeholder | null {
+//
+// Rule: forced entry fires ONLY on stakeholders who have never spoken in
+// the session. Once a stakeholder has had any turn (handoff opener, normal
+// turn, or prior forced entry), they are not eligible for the
+// "barging in" forced-entry opener again — being the first speaker (Elena)
+// or coming back later naturally is a different conversational beat than
+// "Sorry to cut in", and reusing the latter on someone who's already had
+// their say reads as a bug to the student.
+export function pickForcedEntry(
+  input: RouterInput & { everSpoken: Record<Final558Stakeholder, boolean> }
+): Final558Stakeholder | null {
   for (const s of FINAL_STAKEHOLDERS) {
+    if (input.everSpoken[s]) continue;
     if (input.forcedAlready[s]) continue;
     if (input.silenceSeconds[s] > input.forcedEntryThresholdSeconds) {
       return s;
