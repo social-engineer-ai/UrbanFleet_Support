@@ -187,6 +187,12 @@ export function AdminDashboard({ students, isInstructor }: { students: StudentDa
               </button>
             )}
             <Link
+              href="/admin/final-558"
+              className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-lg hover:bg-blue-200"
+            >
+              558 Final
+            </Link>
+            <Link
               href="/chat"
               className="text-sm text-gray-500 hover:text-gray-700"
             >

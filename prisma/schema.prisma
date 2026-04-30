@@ -18,9 +18,12 @@ model User {
   teamId        String?
   createdAt     DateTime @default(now())
 
-  team          Team?          @relation(fields: [teamId], references: [id])
-  conversations Conversation[]
-  studentState  StudentState?
+  team             Team?              @relation(fields: [teamId], references: [id])
+  conversations    Conversation[]
+  studentState     StudentState?
+  final558Attempts Final558Attempt[]
+  final558Session  Final558Session?
+  final558Score    Final558Score?
 }
 
 model OtpCode {
@@ -54,8 +57,9 @@ model Conversation {
   summary      String?
   messageCount Int       @default(0)
 
-  user     User      @relation(fields: [userId], references: [id])
-  messages Message[]
+  user            User             @relation(fields: [userId], references: [id])
+  messages        Message[]
+  final558Session Final558Session?
 }
 
 model Message {
@@ -102,4 +106,109 @@ model LeaderboardBonus {
   course  String
   rank    Int
   bonus   Int
+}
+
+// === BADM 558 In-class Final ===
+// See final_558_prd.md for the full feature spec. Lives alongside the
+// existing meeting flow but does NOT touch StudentState / Conversation
+// scoring; everything for the final is in its own tables.
+
+model Final558Settings {
+  id            String   @id @default(cuid())
+  course        String   @unique // "BADM 558"
+  password      String // bcrypt hash of the cohort password
+  windowStart   DateTime
+  windowEnd     DateTime
+  weights       String // JSON: per-stakeholder + cross-cutting weights
+  forcedEntryAt Int      @default(1320) // seconds, default 22 min
+  hardCutoffAt  Int      @default(4200) // seconds, default 70 min
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Final558Attempt {
+  id          String   @id @default(cuid())
+  userId      String
+  succeeded   Boolean
+  attemptedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, attemptedAt])
+}
+
+model Final558Session {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  conversationId   String    @unique
+  startedAt        DateTime  @default(now())
+  endedAt          DateTime?
+  endReason        String? // "student" | "hard_cutoff" | "admin"
+  lockedAt         DateTime?
+  flaggedForReview Boolean   @default(false)
+  flagReasons      String? // JSON: ["paste_ratio", "tab_switches"]
+  pasteCharCount   Int       @default(0)
+  typedCharCount   Int       @default(0)
+  tabHiddenCount   Int       @default(0)
+  tabHiddenSeconds Int       @default(0)
+  // Per-stakeholder silence tracking (seconds since last spoke). Updated by
+  // the agent runner so the router can decide forced entry without scanning
+  // the full transcript on every turn.
+  lastSpokeElena   DateTime?
+  lastSpokeMarcus  DateTime?
+  lastSpokePriya   DateTime?
+  lastSpokeJames   DateTime?
+  // Whether each stakeholder has already done their forced-entry turn.
+  forcedElena      Boolean   @default(false)
+  forcedMarcus     Boolean   @default(false)
+  forcedPriya      Boolean   @default(false)
+  forcedJames      Boolean   @default(false)
+  // Currently active stakeholder (the one whose turn it is to speak next).
+  activeStakeholder String   @default("elena")
+
+  user         User               @relation(fields: [userId], references: [id])
+  conversation Conversation       @relation(fields: [conversationId], references: [id])
+  events       Final558Event[]
+  coverage     Final558Coverage[]
+  score        Final558Score?
+}
+
+model Final558Event {
+  id        String   @id @default(cuid())
+  sessionId String
+  type      String // "paste" | "focus_blur" | "focus_return" | "router_route" | "forced_entry" | "warning_dismissed"
+  payload   String // JSON, schema varies by type
+  timestamp DateTime @default(now())
+
+  session Final558Session @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId, timestamp])
+}
+
+model Final558Coverage {
+  id          String   @id @default(cuid())
+  sessionId   String
+  stakeholder String // "elena" | "marcus" | "priya" | "james"
+  point       String // "C1" | "C2" | "C3" | "C4"
+  coveredAt   DateTime @default(now())
+
+  session Final558Session @relation(fields: [sessionId], references: [id])
+
+  @@unique([sessionId, stakeholder, point])
+}
+
+model Final558Score {
+  id             String    @id @default(cuid())
+  sessionId      String    @unique
+  userId         String    @unique
+  rawJson        String // full grader output (per-stakeholder + cross-cutting)
+  aggregate      Float // 0-100
+  instructorEdit String? // JSON: { "elena.C1": 4, ... } overrides
+  reviewedBy     String? // instructor userId
+  reviewedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  session Final558Session @relation(fields: [sessionId], references: [id])
+  user    User            @relation(fields: [userId], references: [id])
 }
