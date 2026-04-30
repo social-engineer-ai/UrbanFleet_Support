@@ -76,7 +76,10 @@ export async function issueFinalAuthCookie(userId: string): Promise<void> {
     sameSite: "lax",
     path: "/",
     maxAge: COOKIE_LIFETIME_MS / 1000,
-    secure: process.env.NODE_ENV === "production",
+    // Site runs on plain HTTP for now (no TLS). With secure=true on HTTP,
+    // browsers silently drop the cookie — every subsequent request looks
+    // unauthenticated. Existing NextAuth config makes the same trade-off.
+    secure: false,
   });
 }
 
