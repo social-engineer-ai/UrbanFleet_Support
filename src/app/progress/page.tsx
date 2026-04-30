@@ -305,7 +305,7 @@ export default function ProgressPage() {
           <div className="bg-white rounded-xl border p-6">
             <h2 className="font-semibold text-gray-900 mb-1">Reflection Quality</h2>
             <p className="text-xs text-gray-500 mb-4">
-              {r.total} reflections &middot; {r.forgiven} forgiven (no penalty)
+              {r.total} reflection{r.total === 1 ? "" : "s"} &middot; {r.deep} deep
             </p>
 
             {r.total === 0 ? (
@@ -408,5 +408,9 @@ function Coverage({ num, color, locked = false }: { num: number; color: string; 
 }
 
 function formatMonthDay(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  // Parse YYYY-MM-DD as a local date so the deadline displays as the same
+  // calendar day everyone agreed to. new Date("2026-05-04") parses as UTC
+  // midnight, which lands on May 3 once shifted to US time zones.
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
