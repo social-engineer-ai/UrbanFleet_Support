@@ -560,9 +560,9 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
 
         {/* Sidebar: coverage tracker */}
         <aside className="bg-white border rounded-2xl shadow-sm p-5 h-fit">
-          <h2 className="text-sm font-semibold text-gray-900">Stakeholder coverage</h2>
+          <h2 className="text-sm font-semibold text-gray-900">Topics covered</h2>
           <p className="text-xs text-gray-500 mt-1 mb-4">
-            Cover all four. Each box flips after a substantive exchange.
+            These light up as you cover ground with each stakeholder.
           </p>
           <div className="space-y-3">
             {STAKEHOLDERS.map((s) => {

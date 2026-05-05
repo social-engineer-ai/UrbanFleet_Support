@@ -219,6 +219,25 @@ function WelcomeScreen({
           </div>
         )}
 
+        {(course === "358" || course === "558") && (
+          <Link
+            href="/final"
+            className="block bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl p-5 mb-6 hover:from-blue-700 hover:to-indigo-700 transition-colors"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
+                  Final Defense
+                </div>
+                <div className="text-lg font-semibold mt-0.5">
+                  Open the BADM {course} stakeholder final
+                </div>
+              </div>
+              <span className="text-2xl">→</span>
+            </div>
+          </Link>
+        )}
+
         {startError && (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg mb-4 text-sm flex items-start justify-between">
             <span>{startError}</span>
