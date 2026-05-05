@@ -164,6 +164,14 @@ model Final558Session {
   forcedMarcus     Boolean   @default(false)
   forcedPriya      Boolean   @default(false)
   forcedJames      Boolean   @default(false)
+  // Whether each stakeholder has explicitly closed their thread with the
+  // student (signaled the [DONE] marker). Drives the per-stakeholder
+  // "complete" badge in the live session UI and lets the session-wide
+  // header display "X of 4 complete".
+  completedElena   Boolean   @default(false)
+  completedMarcus  Boolean   @default(false)
+  completedPriya   Boolean   @default(false)
+  completedJames   Boolean   @default(false)
   // Currently active stakeholder (the one whose turn it is to speak next).
   activeStakeholder String   @default("elena")
   // JSON snapshot of per-stakeholder recall + interaction-depth flags,

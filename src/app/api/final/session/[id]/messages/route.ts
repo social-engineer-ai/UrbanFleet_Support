@@ -428,7 +428,31 @@ export async function POST(
           // Defensive: strip any leading "[Speaker Name]: " prefix the model
           // might echo back from the labeled-transcript context. The system
           // prompt tells it not to, but we don't trust unverified output.
-          const cleaned = stripSpeakerPrefix(fullResponse, next);
+          const prefixStripped = stripSpeakerPrefix(fullResponse, next);
+
+          // Detect the [DONE] closure marker and mark this stakeholder
+          // complete. The marker is invisible to students: we strip it
+          // before persisting so it never shows up in transcripts.
+          const { content: cleaned, completed } = stripDoneMarker(
+            prefixStripped
+          );
+
+          let stakeholderJustCompleted = false;
+          if (completed && !isStakeholderAlreadyCompleted(finalSession, next)) {
+            stakeholderJustCompleted = true;
+            await prisma.final558Session.update({
+              where: { id: sessionId },
+              data: completionUpdateFor(next),
+            });
+            await prisma.final558Event.create({
+              data: {
+                sessionId,
+                type: "stakeholder_complete",
+                payload: JSON.stringify({ stakeholder: next }),
+              },
+            });
+          }
+
           await prisma.message.create({
             data: {
               conversationId,
@@ -437,6 +461,7 @@ export async function POST(
               metadata: JSON.stringify({
                 stakeholder: next,
                 forced: isForced,
+                completed: stakeholderJustCompleted || undefined,
               }),
             },
           });
@@ -444,6 +469,16 @@ export async function POST(
             where: { id: conversationId },
             data: { messageCount: { increment: 1 } },
           });
+
+          if (stakeholderJustCompleted) {
+            safeEnqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  meta: { completedStakeholder: next },
+                })}\n\n`
+              )
+            );
+          }
         }
 
         safeEnqueue(
@@ -509,6 +544,61 @@ function computeSilenceSeconds(s: {
     priya: sec(s.lastSpokePriya),
     james: sec(s.lastSpokeJames),
   };
+}
+
+// Strip the [DONE] closure marker the persona appends when ready to
+// close their thread. Detection is deliberately permissive: the marker
+// can appear on its own line, with optional whitespace, possibly
+// wrapped in trailing punctuation. Returns the cleaned content plus a
+// boolean indicating whether the marker was present.
+function stripDoneMarker(text: string): { content: string; completed: boolean } {
+  // Look for [DONE] anywhere near the end of the message, possibly on
+  // its own line with surrounding whitespace.
+  const re = /\s*\[DONE\]\s*$/i;
+  if (re.test(text)) {
+    return { content: text.replace(re, "").trimEnd(), completed: true };
+  }
+  // Defensive fallback: marker buried mid-message (shouldn't happen,
+  // but tolerate). Strip wherever it is.
+  const anywhere = /\s*\[DONE\]\s*/gi;
+  if (anywhere.test(text)) {
+    return { content: text.replace(anywhere, " ").replace(/\s{2,}/g, " ").trim(), completed: true };
+  }
+  return { content: text, completed: false };
+}
+
+function isStakeholderAlreadyCompleted(
+  session: { completedElena: boolean; completedMarcus: boolean; completedPriya: boolean; completedJames: boolean },
+  who: Final558Stakeholder
+): boolean {
+  switch (who) {
+    case "elena":
+      return session.completedElena;
+    case "marcus":
+      return session.completedMarcus;
+    case "priya":
+      return session.completedPriya;
+    case "james":
+      return session.completedJames;
+  }
+}
+
+function completionUpdateFor(who: Final558Stakeholder): {
+  completedElena?: boolean;
+  completedMarcus?: boolean;
+  completedPriya?: boolean;
+  completedJames?: boolean;
+} {
+  switch (who) {
+    case "elena":
+      return { completedElena: true };
+    case "marcus":
+      return { completedMarcus: true };
+    case "priya":
+      return { completedPriya: true };
+    case "james":
+      return { completedJames: true };
+  }
 }
 
 // Strip a leading "[Name]: " or "[Name Name]: " prefix from a response.
@@ -741,6 +831,12 @@ export async function GET(
     remainingSec,
     hardCutoffSec,
     coverage: coverageMap,
+    completed: {
+      elena: finalSession.completedElena,
+      marcus: finalSession.completedMarcus,
+      priya: finalSession.completedPriya,
+      james: finalSession.completedJames,
+    },
     messages: finalSession.conversation.messages.map((m) => ({
       id: m.id,
       role: m.role,

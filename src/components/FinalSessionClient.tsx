@@ -38,6 +38,7 @@ interface SessionState {
   remainingSec: number;
   hardCutoffSec: number;
   coverage: Record<StakeholderId, Coverage>;
+  completed: Record<StakeholderId, boolean>;
   messages: SessionMessage[];
 }
 
@@ -294,6 +295,13 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
         let fullText = "";
         let metaStakeholder: StakeholderId | null = null;
         let coverageInfo: { stakeholder: StakeholderId; covered: string[] } | null = null;
+        let justCompleted: StakeholderId | null = null;
+
+        // The persona may emit a [DONE] marker for closure (server strips
+        // before persisting). Hide it from the live stream display too,
+        // so it never flashes visible on screen.
+        const stripDone = (s: string) =>
+          s.replace(/\s*\[DONE\]\s*$/i, "").replace(/\s*\[DONE\]\s*/gi, " ");
 
         if (reader) {
           while (true) {
@@ -306,22 +314,27 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
               try {
                 const data = JSON.parse(line.slice(6));
                 if (data.meta) {
-                  metaStakeholder = data.meta.stakeholder as StakeholderId;
-                  setStreamingStakeholder(metaStakeholder);
+                  if (data.meta.stakeholder) {
+                    metaStakeholder = data.meta.stakeholder as StakeholderId;
+                    setStreamingStakeholder(metaStakeholder);
+                  }
                   if (data.meta.coverageCovered?.length) {
                     coverageInfo = {
                       stakeholder: data.meta.coverageStakeholder,
                       covered: data.meta.coverageCovered,
                     };
                   }
+                  if (data.meta.completedStakeholder) {
+                    justCompleted = data.meta.completedStakeholder as StakeholderId;
+                  }
                 }
                 if (data.text) {
                   fullText += data.text;
-                  setStreamingText(fullText);
+                  setStreamingText(stripDone(fullText));
                 }
                 if (data.error) {
                   fullText += `\n\n[Error: ${data.error}]`;
-                  setStreamingText(fullText);
+                  setStreamingText(stripDone(fullText));
                 }
                 if (data.done) {
                   // server side has the authoritative remaining
@@ -334,28 +347,42 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
         }
 
         // Commit to state
+        const cleanedFinal = stripDone(fullText);
         setState((s) => {
           if (!s) return s;
           const updatedCoverage = { ...s.coverage };
           if (coverageInfo) {
-            const sh = coverageInfo.stakeholder;
-            updatedCoverage[sh] = { ...updatedCoverage[sh] };
-            for (const p of coverageInfo.covered) {
-              if (p === "C1" || p === "C2" || p === "C3" || p === "C4") {
-                updatedCoverage[sh][p] = true;
-              }
+            const primary = coverageInfo.stakeholder;
+            const points = coverageInfo.covered.filter(
+              (p): p is "C1" | "C2" | "C3" | "C4" =>
+                p === "C1" || p === "C2" || p === "C3" || p === "C4"
+            );
+            // Mirror server-side propagation: C1 and C2 cross-credit
+            // every stakeholder; C3/C4 stay with the primary only.
+            const sessionWide = points.filter((p) => p === "C1" || p === "C2");
+            const localOnly = points.filter((p) => p === "C3" || p === "C4");
+            for (const sh of STAKEHOLDERS) {
+              if (sessionWide.length === 0) continue;
+              updatedCoverage[sh.id] = { ...updatedCoverage[sh.id] };
+              for (const p of sessionWide) updatedCoverage[sh.id][p] = true;
             }
+            updatedCoverage[primary] = { ...updatedCoverage[primary] };
+            for (const p of localOnly) updatedCoverage[primary][p] = true;
           }
+          const updatedCompleted = justCompleted
+            ? { ...s.completed, [justCompleted]: true }
+            : s.completed;
           return {
             ...s,
             activeStakeholder: metaStakeholder ?? s.activeStakeholder,
             coverage: updatedCoverage,
+            completed: updatedCompleted,
             messages: [
               ...s.messages,
               {
                 id: `assistant-${Date.now()}`,
                 role: "assistant",
-                content: fullText,
+                content: cleanedFinal,
                 stakeholder: metaStakeholder ?? undefined,
                 timestamp: new Date().toISOString(),
               },
@@ -558,25 +585,60 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
           </form>
         </div>
 
-        {/* Sidebar: coverage tracker */}
+        {/* Sidebar: progress tracker */}
         <aside className="bg-white border rounded-2xl shadow-sm p-5 h-fit">
-          <h2 className="text-sm font-semibold text-gray-900">Topics covered</h2>
-          <p className="text-xs text-gray-500 mt-1 mb-4">
-            These light up as you cover ground with each stakeholder.
-          </p>
+          {(() => {
+            const completedCount = STAKEHOLDERS.filter(
+              (s) => state.completed?.[s.id]
+            ).length;
+            const allDone = completedCount === STAKEHOLDERS.length;
+            return (
+              <div className="mb-4">
+                <h2 className="text-sm font-semibold text-gray-900">
+                  Progress
+                </h2>
+                <p
+                  className={`text-xs mt-1 ${
+                    allDone ? "text-green-700 font-medium" : "text-gray-500"
+                  }`}
+                >
+                  {allDone
+                    ? "All four stakeholders are satisfied. You can end the session whenever you're ready."
+                    : `${completedCount} of ${STAKEHOLDERS.length} stakeholders complete.`}
+                </p>
+              </div>
+            );
+          })()}
           <div className="space-y-3">
             {STAKEHOLDERS.map((s) => {
               const cov = state.coverage[s.id];
               const isActive = s.id === state.activeStakeholder;
+              const isComplete = !!state.completed?.[s.id];
               return (
                 <div
                   key={s.id}
                   className={`rounded-lg border px-3 py-2 ${
-                    isActive ? "border-blue-300 bg-blue-50/40" : "border-gray-200"
+                    isComplete
+                      ? "border-green-300 bg-green-50/60"
+                      : isActive
+                        ? "border-blue-300 bg-blue-50/40"
+                        : "border-gray-200"
                   }`}
                 >
-                  <p className="text-xs font-semibold text-gray-900">{s.name}</p>
-                  <p className="text-[11px] text-gray-500 mb-1.5">{s.title}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-900">{s.name}</p>
+                      <p className="text-[11px] text-gray-500 mb-1.5">{s.title}</p>
+                    </div>
+                    {isComplete && (
+                      <span
+                        className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-100 rounded px-1.5 py-0.5"
+                        title="This stakeholder closed their thread."
+                      >
+                        ✓ Complete
+                      </span>
+                    )}
+                  </div>
                   <div className="flex gap-1.5 text-[10px]">
                     {(["C1", "C2", "C3", "C4"] as const).map((p) => (
                       <CoverageDot key={p} label={p} covered={cov[p]} />
