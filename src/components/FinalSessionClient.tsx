@@ -56,6 +56,11 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
   const [input, setInput] = useState("");
   const [streamingText, setStreamingText] = useState("");
   const [streamingStakeholder, setStreamingStakeholder] = useState<StakeholderId | null>(null);
+  // Optional explicit-routing override. When non-null, the next message
+  // sent will be addressed to this stakeholder regardless of what the
+  // router would pick. Resets to null after the response lands so the
+  // conversation flows on autopilot afterward.
+  const [addressTo, setAddressTo] = useState<StakeholderId | null>(null);
   const [sending, setSending] = useState(false);
   const [banners, setBanners] = useState<Banner[]>([]);
   const [showEndDialog, setShowEndDialog] = useState(false);
@@ -273,12 +278,23 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
           : s
       );
 
+      // Snapshot the address override so we can include it in the POST
+      // and clear it after the request kicks off (the next turn will
+      // start in Auto mode unless the student picks again).
+      const forceStakeholder = addressTo;
+
       try {
         const res = await fetch(`/api/final/session/${sessionId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: text }),
+          body: JSON.stringify({
+            content: text,
+            ...(forceStakeholder ? { forceStakeholder } : {}),
+          }),
         });
+        // Clear the override once the request is in flight; the user
+        // can re-set it before the next turn if they want.
+        setAddressTo(null);
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           if (err.error === "time_up") {
@@ -294,7 +310,7 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
         const decoder = new TextDecoder();
         let fullText = "";
         let metaStakeholder: StakeholderId | null = null;
-        let coverageInfo: { stakeholder: StakeholderId; covered: string[] } | null = null;
+        let coverageCredits: Array<{ stakeholder: StakeholderId; point: "C1" | "C2" | "C3" | "C4" }> = [];
         let justCompleted: StakeholderId | null = null;
 
         // The persona may emit a [DONE] marker for closure (server strips
@@ -318,11 +334,8 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
                     metaStakeholder = data.meta.stakeholder as StakeholderId;
                     setStreamingStakeholder(metaStakeholder);
                   }
-                  if (data.meta.coverageCovered?.length) {
-                    coverageInfo = {
-                      stakeholder: data.meta.coverageStakeholder,
-                      covered: data.meta.coverageCovered,
-                    };
+                  if (Array.isArray(data.meta.coverageCredits)) {
+                    coverageCredits = data.meta.coverageCredits;
                   }
                   if (data.meta.completedStakeholder) {
                     justCompleted = data.meta.completedStakeholder as StakeholderId;
@@ -351,23 +364,14 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
         setState((s) => {
           if (!s) return s;
           const updatedCoverage = { ...s.coverage };
-          if (coverageInfo) {
-            const primary = coverageInfo.stakeholder;
-            const points = coverageInfo.covered.filter(
-              (p): p is "C1" | "C2" | "C3" | "C4" =>
-                p === "C1" || p === "C2" || p === "C3" || p === "C4"
-            );
-            // Mirror server-side propagation: C1 and C2 cross-credit
-            // every stakeholder; C3/C4 stay with the primary only.
-            const sessionWide = points.filter((p) => p === "C1" || p === "C2");
-            const localOnly = points.filter((p) => p === "C3" || p === "C4");
-            for (const sh of STAKEHOLDERS) {
-              if (sessionWide.length === 0) continue;
-              updatedCoverage[sh.id] = { ...updatedCoverage[sh.id] };
-              for (const p of sessionWide) updatedCoverage[sh.id][p] = true;
-            }
-            updatedCoverage[primary] = { ...updatedCoverage[primary] };
-            for (const p of localOnly) updatedCoverage[primary][p] = true;
+          // Apply per-stakeholder coverage credits the server sent us.
+          // Each credit is a {stakeholder, point} pair; multiple
+          // stakeholders can be credited from one student message.
+          for (const credit of coverageCredits) {
+            const sh = credit.stakeholder;
+            if (!updatedCoverage[sh]) continue;
+            updatedCoverage[sh] = { ...updatedCoverage[sh] };
+            updatedCoverage[sh][credit.point] = true;
           }
           const updatedCompleted = justCompleted
             ? { ...s.completed, [justCompleted]: true }
@@ -398,7 +402,7 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
       setSending(false);
       textareaRef.current?.focus();
     },
-    [input, sending, state, sessionId]
+    [input, sending, state, sessionId, addressTo]
   );
 
   async function endSession(reason: "student" | "hard_cutoff") {
@@ -562,6 +566,51 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
 
           {/* Input */}
           <form onSubmit={sendMessage} className="border-t px-5 py-3 shrink-0">
+            {/* Address chip row: optional explicit-routing override.
+                Auto leaves it to the system; clicking a stakeholder
+                pins the next message to them. */}
+            <div className="flex gap-2 items-center mb-2 text-[11px] flex-wrap">
+              <span className="text-gray-500">Address:</span>
+              <button
+                type="button"
+                onClick={() => setAddressTo(null)}
+                disabled={sending}
+                className={`px-2.5 py-1 rounded-full border ${
+                  addressTo === null
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
+                }`}
+              >
+                Auto
+              </button>
+              {STAKEHOLDERS.map((s) => {
+                const selected = addressTo === s.id;
+                const isComplete = !!state.completed?.[s.id];
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setAddressTo(s.id)}
+                    disabled={sending}
+                    title={
+                      isComplete
+                        ? `${s.name.split(" ")[0]} is satisfied. They'll briefly acknowledge and pass.`
+                        : undefined
+                    }
+                    className={`px-2.5 py-1 rounded-full border ${
+                      selected
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : isComplete
+                          ? "bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-300"
+                          : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
+                    }`}
+                  >
+                    {s.name.split(" ")[0]}
+                    {isComplete && " ✓"}
+                  </button>
+                );
+              })}
+            </div>
             <div className="flex gap-3 items-end">
               <textarea
                 ref={textareaRef}
@@ -569,7 +618,13 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                placeholder="Type your response… (Enter to send, Shift+Enter for new line)"
+                placeholder={
+                  addressTo
+                    ? `Type your message to ${
+                        STAKEHOLDERS.find((s) => s.id === addressTo)?.name.split(" ")[0]
+                      }… (Enter to send)`
+                    : "Type your response… (Enter to send, Shift+Enter for new line)"
+                }
                 rows={2}
                 className="flex-1 resize-none rounded-xl border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 disabled={sending}

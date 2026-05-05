@@ -55,12 +55,24 @@ export async function POST(
   const userId = authSession.user.id;
 
   const { id: sessionId } = await params;
-  const { content } = (await req.json().catch(() => ({}))) as {
+  const body = (await req.json().catch(() => ({}))) as {
     content?: string;
+    forceStakeholder?: string;
   };
+  const { content } = body;
   if (!content || typeof content !== "string" || !content.trim()) {
     return Response.json({ error: "Message content required" }, { status: 400 });
   }
+  // Optional explicit student-driven routing override. If the student
+  // clicked an "Address: <Stakeholder>" chip, the chip's value comes
+  // here and forces that stakeholder to respond regardless of what the
+  // router would have picked. Validated against the allowlist; ignored
+  // if the value is anything else.
+  const studentForced: Final558Stakeholder | null =
+    body.forceStakeholder &&
+    FINAL_STAKEHOLDERS.includes(body.forceStakeholder as Final558Stakeholder)
+      ? (body.forceStakeholder as Final558Stakeholder)
+      : null;
 
   const finalSession = await prisma.final558Session.findFirst({
     where: { id: sessionId, userId },
@@ -122,37 +134,33 @@ export async function POST(
   });
 
   // ===== Coverage judge (cheap, runs in parallel with routing decision)
-  // We grade against the CURRENT active stakeholder — that's who the
-  // student was responding to. After routing we'll know the next speaker,
-  // but coverage credit belongs to who they were just answering.
-  //
-  // C1 (business framing) and C2 (data description) are session-wide
-  // truths, not per-stakeholder ones: a single substantive answer about
-  // the business problem or the data shape applies to all four
-  // stakeholders. When either is covered for the active stakeholder, we
-  // propagate the credit to the other three so the student isn't asked to
-  // re-establish the same context with each persona. C3 (infrastructure)
-  // and C4 (solution mapped to concern) remain stakeholder-specific.
+  // The judge now scores PER STAKEHOLDER: it looks at the message and
+  // decides for each of Elena/Marcus/Priya/James which of C1-C4 was
+  // engaged in THAT stakeholder's lens. A single substantive answer can
+  // credit multiple stakeholders simultaneously (a $11/month Kinesis
+  // estimate credits Marcus's C3 AND Priya's C3, for example). This
+  // replaces the older "credit the previously active stakeholder + auto-
+  // propagate C1/C2" logic, which was missing C3/C4 credit for
+  // stakeholders who weren't active at the moment of the answer.
   const previousActive = finalSession.activeStakeholder as Final558Stakeholder;
-  const coverageCovered = await runCoverageJudge(trimmed, previousActive, course);
-  if (coverageCovered.length > 0) {
-    for (const point of coverageCovered) {
-      const stakeholdersToCredit: Final558Stakeholder[] =
-        point === "C1" || point === "C2"
-          ? [...FINAL_STAKEHOLDERS]
-          : [previousActive];
-      for (const stakeholder of stakeholdersToCredit) {
-        try {
-          await prisma.final558Coverage.create({
-            data: {
-              sessionId,
-              stakeholder,
-              point,
-            },
-          });
-        } catch {
-          // unique constraint: already covered, ignore
-        }
+  const coverageMatrix = await runCoverageJudge(trimmed, previousActive, course);
+  // Flatten the matrix into a list for the SSE meta payload (UI needs to
+  // know which stakeholders × points just lit up so it can update the
+  // tracker without a full GET refresh).
+  const coverageCreditList: Array<{
+    stakeholder: Final558Stakeholder;
+    point: "C1" | "C2" | "C3" | "C4";
+  }> = [];
+  for (const stakeholder of FINAL_STAKEHOLDERS) {
+    const points = coverageMatrix[stakeholder] ?? [];
+    for (const point of points) {
+      coverageCreditList.push({ stakeholder, point });
+      try {
+        await prisma.final558Coverage.create({
+          data: { sessionId, stakeholder, point },
+        });
+      } catch {
+        // unique constraint: already covered, ignore
       }
     }
   }
@@ -185,24 +193,22 @@ export async function POST(
   // back in, not the "Sorry to cut in" forced-entry phrasing.
   const everSpoken = await computeEverSpoken(conversationId);
 
-  // Cue-driven routing runs FIRST. The router judges who the student is
-  // actually talking to right now. Forced-entry is the floor: it fires
-  // only when the router itself reports the cue was ambiguous AND someone
-  // is past the silence threshold. Priority: cue > silence/timer.
-  const routerOutput = await runRouter({
-    recentMessages: recentMsgs.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-      stakeholder: parseStakeholder(m.metadata),
-    })),
-    active: previousActive,
-    silenceSeconds,
-    forcedAlready,
-    forcedEntryThresholdSeconds: forcedEntrySec,
-  });
-
-  if (routerOutput.ambiguous) {
-    const forcedTarget = pickForcedEntry({
+  // Student-driven explicit routing has highest priority. If the
+  // student clicked an "Address: <Stakeholder>" chip, the named
+  // stakeholder responds regardless of the router or any time-based
+  // floor. The router and forced-entry logic only run when the student
+  // didn't pin a target. Priority: student > cue > silence/timer.
+  if (studentForced) {
+    next = studentForced;
+    isForced = false;
+    routerRationale = `student_forced: ${studentForced}`;
+  } else {
+    // Cue-driven routing runs FIRST when there's no student override.
+    // The router judges who the student is actually talking to right
+    // now. Forced-entry is the floor: fires only when the router
+    // itself reports the cue was ambiguous AND someone is past the
+    // silence threshold.
+    const routerOutput = await runRouter({
       recentMessages: recentMsgs.map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
@@ -212,19 +218,33 @@ export async function POST(
       silenceSeconds,
       forcedAlready,
       forcedEntryThresholdSeconds: forcedEntrySec,
-      everSpoken,
     });
-    if (forcedTarget) {
-      next = forcedTarget;
-      isForced = true;
-      routerRationale = `forced (router ambiguous): ${forcedTarget} silent ${silenceSeconds[forcedTarget]}s > ${forcedEntrySec}s threshold`;
+
+    if (routerOutput.ambiguous) {
+      const forcedTarget = pickForcedEntry({
+        recentMessages: recentMsgs.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          stakeholder: parseStakeholder(m.metadata),
+        })),
+        active: previousActive,
+        silenceSeconds,
+        forcedAlready,
+        forcedEntryThresholdSeconds: forcedEntrySec,
+        everSpoken,
+      });
+      if (forcedTarget) {
+        next = forcedTarget;
+        isForced = true;
+        routerRationale = `forced (router ambiguous): ${forcedTarget} silent ${silenceSeconds[forcedTarget]}s > ${forcedEntrySec}s threshold`;
+      } else {
+        next = routerOutput.next;
+        routerRationale = routerOutput.rationale;
+      }
     } else {
       next = routerOutput.next;
       routerRationale = routerOutput.rationale;
     }
-  } else {
-    next = routerOutput.next;
-    routerRationale = routerOutput.rationale;
   }
 
   // Log the routing decision as an event (audit trail).
@@ -276,11 +296,12 @@ export async function POST(
   const myCoverageRows = finalSession.coverage.filter(
     (c) => c.stakeholder === next
   );
+  const justCreditedNext = (coverageMatrix[next] ?? []) as readonly string[];
   const myCoverage = {
-    C1: myCoverageRows.some((c) => c.point === "C1") || (next === previousActive && coverageCovered.includes("C1")),
-    C2: myCoverageRows.some((c) => c.point === "C2") || (next === previousActive && coverageCovered.includes("C2")),
-    C3: myCoverageRows.some((c) => c.point === "C3") || (next === previousActive && coverageCovered.includes("C3")),
-    C4: myCoverageRows.some((c) => c.point === "C4") || (next === previousActive && coverageCovered.includes("C4")),
+    C1: myCoverageRows.some((c) => c.point === "C1") || justCreditedNext.includes("C1"),
+    C2: myCoverageRows.some((c) => c.point === "C2") || justCreditedNext.includes("C2"),
+    C3: myCoverageRows.some((c) => c.point === "C3") || justCreditedNext.includes("C3"),
+    C4: myCoverageRows.some((c) => c.point === "C4") || justCreditedNext.includes("C4"),
   };
 
   // We already computed everSpoken above for the forced-entry decision; reuse.
@@ -392,8 +413,10 @@ export async function POST(
             meta: {
               stakeholder: next,
               forced: isForced,
-              coverageCovered,
-              coverageStakeholder: previousActive,
+              // Per-stakeholder coverage credit list. Each entry is a
+              // {stakeholder, point} pair. The client mirrors these into
+              // the live tracker without waiting for a GET refresh.
+              coverageCredits: coverageCreditList,
             },
           })}\n\n`
         )
@@ -699,22 +722,27 @@ async function runRouter(input: {
   return { next: input.active, ambiguous: true, rationale: "router_fallback" };
 }
 
+type CoverageMatrix = Record<Final558Stakeholder, ("C1" | "C2" | "C3" | "C4")[]>;
+const EMPTY_COVERAGE_MATRIX: CoverageMatrix = {
+  elena: [],
+  marcus: [],
+  priya: [],
+  james: [],
+};
+
 async function runCoverageJudge(
   studentMessage: string,
   addressedTo: Final558Stakeholder,
   course: FinalCourse
-): Promise<("C1" | "C2" | "C3" | "C4")[]> {
-  // No word floor: the LLM judge decides substance per-message. Short
-  // student answers can be substantive ("trim horizon", "parquet format
-  // with partitions", "filter by vehicle id and day partition") — a
-  // word-count gate was screening these out and starving the coverage
-  // tracker. The judge knows to return [] for "yes" / "okay" / "I don't
-  // know" type messages.
+): Promise<CoverageMatrix> {
+  // No word floor: the LLM judge decides substance per-message. The
+  // judge returns a per-stakeholder coverage matrix; a single message
+  // can credit multiple stakeholders simultaneously.
 
   try {
     const res = await anthropic.messages.create({
       model: JUDGE_MODEL,
-      max_tokens: 150,
+      max_tokens: 250,
       system: buildCoverageJudgeSystemPrompt(course),
       messages: [
         {
@@ -732,15 +760,26 @@ async function runCoverageJudge(
         .map((c) => (c as { text: string }).text)
         .join("") ?? "";
     const parsed = parseFirstJson(text);
-    if (parsed && Array.isArray(parsed.covered)) {
-      return parsed.covered.filter((p: unknown): p is "C1" | "C2" | "C3" | "C4" =>
-        p === "C1" || p === "C2" || p === "C3" || p === "C4"
-      );
+    if (parsed) {
+      const matrix: CoverageMatrix = {
+        elena: extractPoints(parsed.elena),
+        marcus: extractPoints(parsed.marcus),
+        priya: extractPoints(parsed.priya),
+        james: extractPoints(parsed.james),
+      };
+      return matrix;
     }
   } catch (err) {
     console.error("Coverage judge failed:", err);
   }
-  return [];
+  return EMPTY_COVERAGE_MATRIX;
+}
+
+function extractPoints(value: unknown): ("C1" | "C2" | "C3" | "C4")[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((p): p is "C1" | "C2" | "C3" | "C4" =>
+    p === "C1" || p === "C2" || p === "C3" || p === "C4"
+  );
 }
 
 function parseFirstJson(text: string): Record<string, unknown> | null {
