@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export function FinalPasswordGate() {
   const router = useRouter();
@@ -105,6 +106,15 @@ export function FinalPasswordGate() {
             {submitting ? "Verifying..." : "Continue"}
           </button>
         </form>
+
+        <div className="mt-6">
+          <Link
+            href="/chat"
+            className="text-sm text-blue-600 hover:text-blue-800"
+          >
+            ← Back to dashboard
+          </Link>
+        </div>
       </div>
     </main>
   );

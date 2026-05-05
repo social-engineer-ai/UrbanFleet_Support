@@ -16,10 +16,12 @@ const MAX_FAILURES = 5;
 const LOCKOUT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const LOCKOUT_DURATION_MS = 60 * 60 * 1000; // 1 hour
 
-// Matches the value stored in User.course on existing accounts (just the
-// number, no "BADM " prefix). Same string is used as the unique key on
-// Final558Settings.course so one cohort row gates one course label.
-const FINAL_558_COURSE = "558";
+// Both 558 and 358 are eligible for the final defense flow. The
+// Final558Settings table is keyed on `course`, so each course has its
+// own row with its own cohort password, time window, and timing
+// settings. The "Final558" naming is preserved for table compatibility;
+// the flow itself is course-agnostic.
+import { FINAL_COURSES, type FinalCourse } from "@/lib/agents/final558";
 
 // === Cookie ============================================================
 // We sign with HMAC-SHA256. The secret comes from FINAL_558_COOKIE_SECRET;
@@ -173,10 +175,16 @@ export interface FinalEntryStatus {
   };
 }
 
-export async function getFinal558Settings() {
+export async function getFinalSettings(course: FinalCourse) {
   return prisma.final558Settings.findUnique({
-    where: { course: FINAL_558_COURSE },
+    where: { course },
   });
+}
+
+// Backwards-compat shim — older callers passed no argument and assumed
+// 558. New code should call getFinalSettings(course) explicitly.
+export async function getFinal558Settings() {
+  return getFinalSettings("558");
 }
 
 // Check whether this user is allowed to see the password gate / pre-session
@@ -186,11 +194,11 @@ export async function checkFinalEntryPreconditions(
 ): Promise<FinalEntryStatus> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { ok: false, error: "no_user" };
-  if (user.course !== FINAL_558_COURSE) {
+  if (!user.course || !FINAL_COURSES.includes(user.course as FinalCourse)) {
     return { ok: false, error: "wrong_course" };
   }
 
-  const settings = await getFinal558Settings();
+  const settings = await getFinalSettings(user.course as FinalCourse);
   if (!settings) {
     return { ok: false, error: "no_settings" };
   }
@@ -252,7 +260,11 @@ export async function verifyFinalPassword(
     };
   }
 
-  const settings = await getFinal558Settings();
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.course || !FINAL_COURSES.includes(user.course as FinalCourse)) {
+    return { ok: false, locked: false, unlockAt: null, remaining: lockout.remaining };
+  }
+  const settings = await getFinalSettings(user.course as FinalCourse);
   if (!settings) {
     return { ok: false, locked: false, unlockAt: null, remaining: lockout.remaining };
   }

@@ -76,6 +76,17 @@ export function FinalSessionClient({ sessionId }: { sessionId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
+  // Refocus the textarea after a send completes. The textarea is
+  // `disabled={sending}`, so the inline focus() call right after
+  // setSending(false) fires before the re-render and is dropped by the
+  // browser. A useEffect on `sending` runs after the re-render and
+  // reliably puts the cursor back where the student expects it.
+  useEffect(() => {
+    if (!sending) {
+      textareaRef.current?.focus();
+    }
+  }, [sending]);
+
   // Local 1Hz tick to advance the timer between server pulls.
   useEffect(() => {
     if (!state || state.endedAt) return;

@@ -4,7 +4,8 @@ import {
   checkFinalEntryPreconditions,
   hasValidFinalAuthCookie,
 } from "@/lib/final558/auth";
-import { ELENA_FIRST_OPENER } from "@/lib/agents/final558";
+import { buildElenaFirstOpener } from "@/lib/agents/final558";
+import { buildRecallBundle, EMPTY_BUNDLE } from "@/lib/final558/recall";
 
 export async function POST() {
   const session = await auth();
@@ -47,15 +48,33 @@ export async function POST() {
     },
   });
 
-  // Persist Elena's opener as the first assistant message. The system prompt
-  // is composed per-turn (Section 5 of the PRD), so we do NOT store a static
-  // system message on the conversation — each call to the messages route
-  // assembles a persona-specific prompt for the active stakeholder.
+  // Build per-stakeholder recall + interaction-depth flags from this
+  // student's prior client conversations (mentor and practice excluded).
+  // If summarization fails for any reason we fall back to EMPTY_BUNDLE so
+  // the session still starts; recall is an enhancement, not a blocker.
+  let recallBundle = EMPTY_BUNDLE;
+  try {
+    recallBundle = await buildRecallBundle(userId, conversation.id);
+  } catch (err) {
+    console.error("Recall bundle build failed; continuing without recall:", err);
+  }
+
+  // Elena's opener adapts to the student's overall interaction depth
+  // (none / part1_only / full) and acknowledges Part 3 if completed.
+  const elenaOpener = buildElenaFirstOpener({
+    elenaDepth: recallBundle.elena.depth,
+    didExtraWork: recallBundle.didExtraWork,
+  });
+
+  // Persist the opener as the first assistant message. The system prompt
+  // is composed per-turn (Section 5 of the PRD), so we do NOT store a
+  // static system message on the conversation — each call to the messages
+  // route assembles a persona-specific prompt for the active stakeholder.
   await prisma.message.create({
     data: {
       conversationId: conversation.id,
       role: "assistant",
-      content: ELENA_FIRST_OPENER,
+      content: elenaOpener,
       metadata: JSON.stringify({ stakeholder: "elena", kind: "first_opener" }),
     },
   });
@@ -67,6 +86,7 @@ export async function POST() {
       conversationId: conversation.id,
       activeStakeholder: "elena",
       lastSpokeElena: now,
+      recallBundle: JSON.stringify(recallBundle),
     },
   });
 

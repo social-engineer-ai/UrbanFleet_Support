@@ -7,15 +7,17 @@ import {
   buildRouterUserMessage,
   buildCoverageJudgeUserMessage,
   ROUTER_SYSTEM_PROMPT,
-  COVERAGE_JUDGE_SYSTEM_PROMPT,
-  HANDOFF_OPENERS,
+  buildHandoffOpener,
+  buildCoverageJudgeSystemPrompt,
   FORCED_ENTRY_OPENERS,
   pickForcedEntry,
   STAKEHOLDER_INFO,
   type Final558Stakeholder,
   type SessionContext,
+  type FinalCourse,
   FINAL_STAKEHOLDERS,
 } from "@/lib/agents/final558";
+import { parseRecallBundle } from "@/lib/final558/recall";
 import { sendInstructorAlert } from "@/lib/email";
 
 const anthropic = new Anthropic();
@@ -74,9 +76,17 @@ export async function POST(
     return Response.json({ error: "Session ended" }, { status: 400 });
   }
 
-  // Server-authoritative timer check. If we're past the hard cutoff, refuse.
+  // Server-authoritative timer check. Settings are per-course (558 or 358),
+  // each row carrying its own cohort password, window, and timing limits.
+  // We look up the user's course to find the right row.
+  const studentUserRow = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true, course: true },
+  });
+  const courseStr = studentUserRow?.course ?? "558";
+  const course: "558" | "358" = courseStr === "358" ? "358" : "558";
   const settings = await prisma.final558Settings.findUnique({
-    where: { course: "558" },
+    where: { course },
   });
   const hardCutoffSec = settings?.hardCutoffAt ?? 4200;
   const forcedEntrySec = settings?.forcedEntryAt ?? 1320;
@@ -115,20 +125,34 @@ export async function POST(
   // We grade against the CURRENT active stakeholder — that's who the
   // student was responding to. After routing we'll know the next speaker,
   // but coverage credit belongs to who they were just answering.
+  //
+  // C1 (business framing) and C2 (data description) are session-wide
+  // truths, not per-stakeholder ones: a single substantive answer about
+  // the business problem or the data shape applies to all four
+  // stakeholders. When either is covered for the active stakeholder, we
+  // propagate the credit to the other three so the student isn't asked to
+  // re-establish the same context with each persona. C3 (infrastructure)
+  // and C4 (solution mapped to concern) remain stakeholder-specific.
   const previousActive = finalSession.activeStakeholder as Final558Stakeholder;
-  const coverageCovered = await runCoverageJudge(trimmed, previousActive);
+  const coverageCovered = await runCoverageJudge(trimmed, previousActive, course);
   if (coverageCovered.length > 0) {
     for (const point of coverageCovered) {
-      try {
-        await prisma.final558Coverage.create({
-          data: {
-            sessionId,
-            stakeholder: previousActive,
-            point,
-          },
-        });
-      } catch {
-        // unique constraint: already covered, ignore
+      const stakeholdersToCredit: Final558Stakeholder[] =
+        point === "C1" || point === "C2"
+          ? [...FINAL_STAKEHOLDERS]
+          : [previousActive];
+      for (const stakeholder of stakeholdersToCredit) {
+        try {
+          await prisma.final558Coverage.create({
+            data: {
+              sessionId,
+              stakeholder,
+              point,
+            },
+          });
+        } catch {
+          // unique constraint: already covered, ignore
+        }
       }
     }
   }
@@ -155,13 +179,17 @@ export async function POST(
   let isForced = false;
   let routerRationale = "";
 
-  // Build "ever spoken" up-front. Forced entry should only fire on
-  // stakeholders who have never had a turn — once Elena/Marcus/Priya/James
-  // have spoken at all, dragging them back in with "Sorry to cut in"
-  // misreads as a bug.
+  // Build "ever spoken" up-front. Forced entry only fires on stakeholders
+  // who have never had a turn — once Elena/Marcus/Priya/James have spoken
+  // at all, the lean-in handoff openers are the right way to bring them
+  // back in, not the "Sorry to cut in" forced-entry phrasing.
   const everSpoken = await computeEverSpoken(conversationId);
 
-  const forcedTarget = pickForcedEntry({
+  // Cue-driven routing runs FIRST. The router judges who the student is
+  // actually talking to right now. Forced-entry is the floor: it fires
+  // only when the router itself reports the cue was ambiguous AND someone
+  // is past the silence threshold. Priority: cue > silence/timer.
+  const routerOutput = await runRouter({
     recentMessages: recentMsgs.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
@@ -171,15 +199,10 @@ export async function POST(
     silenceSeconds,
     forcedAlready,
     forcedEntryThresholdSeconds: forcedEntrySec,
-    everSpoken,
   });
 
-  if (forcedTarget) {
-    next = forcedTarget;
-    isForced = true;
-    routerRationale = `forced: ${forcedTarget} silent ${silenceSeconds[forcedTarget]}s > ${forcedEntrySec}s threshold`;
-  } else {
-    const routerOutput = await runRouter({
+  if (routerOutput.ambiguous) {
+    const forcedTarget = pickForcedEntry({
       recentMessages: recentMsgs.map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
@@ -189,7 +212,17 @@ export async function POST(
       silenceSeconds,
       forcedAlready,
       forcedEntryThresholdSeconds: forcedEntrySec,
+      everSpoken,
     });
+    if (forcedTarget) {
+      next = forcedTarget;
+      isForced = true;
+      routerRationale = `forced (router ambiguous): ${forcedTarget} silent ${silenceSeconds[forcedTarget]}s > ${forcedEntrySec}s threshold`;
+    } else {
+      next = routerOutput.next;
+      routerRationale = routerOutput.rationale;
+    }
+  } else {
     next = routerOutput.next;
     routerRationale = routerOutput.rationale;
   }
@@ -219,12 +252,17 @@ export async function POST(
     next
   );
 
+  // Recall bundle drives the gap-aware opener variant. If the column is
+  // null (pre-recall deploy or summarizer failure), parseRecallBundle
+  // returns EMPTY_BUNDLE and openers fall back to the "none" depth.
+  const recallBundle = parseRecallBundle(finalSession.recallBundle ?? null);
+
   let prependedOpener: string | null = null;
   if (next !== previousActive) {
     if (isForced) {
       prependedOpener = FORCED_ENTRY_OPENERS[next];
     } else if (!stakeholderHasSpokenBefore) {
-      prependedOpener = HANDOFF_OPENERS[next];
+      prependedOpener = buildHandoffOpener(next, recallBundle[next].depth);
     }
   }
 
@@ -248,17 +286,15 @@ export async function POST(
   // We already computed everSpoken above for the forced-entry decision; reuse.
   const spokenBefore = everSpoken;
 
-  const studentUser = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { name: true },
-  });
-
   const ctx: SessionContext = {
-    studentName: studentUser?.name ?? "Student",
+    studentName: studentUserRow?.name ?? "Student",
     activeStakeholder: next,
     spokenBefore,
     myCoverage,
     remainingSeconds: Math.floor(remainingSec),
+    myRecallSummary: recallBundle[next].summary,
+    myInteractionDepth: recallBundle[next].depth,
+    course,
   };
 
   const systemPrompt = buildPersonaSystemPrompt(next, ctx);
@@ -575,16 +611,21 @@ async function runRouter(input: {
 
 async function runCoverageJudge(
   studentMessage: string,
-  addressedTo: Final558Stakeholder
+  addressedTo: Final558Stakeholder,
+  course: FinalCourse
 ): Promise<("C1" | "C2" | "C3" | "C4")[]> {
-  // Trivial fast-path: short messages don't qualify as substantive.
-  if (studentMessage.split(/\s+/).filter(Boolean).length < 12) return [];
+  // No word floor: the LLM judge decides substance per-message. Short
+  // student answers can be substantive ("trim horizon", "parquet format
+  // with partitions", "filter by vehicle id and day partition") — a
+  // word-count gate was screening these out and starving the coverage
+  // tracker. The judge knows to return [] for "yes" / "okay" / "I don't
+  // know" type messages.
 
   try {
     const res = await anthropic.messages.create({
       model: JUDGE_MODEL,
       max_tokens: 150,
-      system: COVERAGE_JUDGE_SYSTEM_PROMPT,
+      system: buildCoverageJudgeSystemPrompt(course),
       messages: [
         {
           role: "user",

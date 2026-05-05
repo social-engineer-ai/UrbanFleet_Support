@@ -34,7 +34,7 @@ export async function GET() {
     "End reason",
     "Flagged",
     "Flag reasons",
-    "Aggregate (0-100)",
+    "Aggregate (0-50)",
     "Reviewed at",
   ];
   // Per-stakeholder per-coverage columns (16)

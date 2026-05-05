@@ -7,13 +7,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "../prisma";
 import {
-  GRADER_SYSTEM_PROMPT,
+  buildGraderSystemPrompt,
   computeAggregate,
   DEFAULT_WEIGHTS,
   STAKEHOLDER_INFO,
   type GraderOutput,
   type Final558Stakeholder,
+  type FinalCourse,
   FINAL_STAKEHOLDERS,
+  FINAL_COURSES,
 } from "../agents/final558";
 
 const anthropic = new Anthropic();
@@ -41,9 +43,18 @@ export async function gradeFinalSession(
       },
       coverage: true,
       score: true,
+      user: { select: { course: true } },
     },
   });
   if (!session) return { ok: false, error: "session_not_found" };
+
+  // Course determines (a) which grader prompt addendum is appended (358
+  // gets the lenient calibration overlay) and (b) which settings row is
+  // read for weight overrides.
+  const courseStr = session.user?.course ?? "558";
+  const course: FinalCourse = FINAL_COURSES.includes(courseStr as FinalCourse)
+    ? (courseStr as FinalCourse)
+    : "558";
 
   // Idempotent: if a real AI grade already exists and we're not forcing a
   // re-grade, leave it alone. A "manual-only" score row (rawJson === "{}")
@@ -124,7 +135,7 @@ Output the grading JSON now.`;
     const res = await anthropic.messages.create({
       model: GRADER_MODEL,
       max_tokens: GRADER_MAX_TOKENS,
-      system: GRADER_SYSTEM_PROMPT,
+      system: buildGraderSystemPrompt(course),
       messages: [{ role: "user", content: userMessage }],
     });
     const text = res.content
@@ -146,9 +157,9 @@ Output the grading JSON now.`;
     };
   }
 
-  // Settings may override the default weights.
+  // Settings may override the default weights. Per-course row.
   const settings = await prisma.final558Settings.findUnique({
-    where: { course: "558" },
+    where: { course },
   });
   let weights = DEFAULT_WEIGHTS;
   if (settings?.weights) {

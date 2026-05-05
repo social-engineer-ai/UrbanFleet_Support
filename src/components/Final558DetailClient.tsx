@@ -190,7 +190,8 @@ export function Final558DetailClient({ sessionId }: { sessionId: string }) {
     for (const d of CROSS_CUTTING) {
       total += get(d, data.rawScores?.cross_cutting[d] ?? 0) * PER_CROSS;
     }
-    return Math.round(total * 20 * 100) / 100;
+    // 0-50 scale to match computeAggregate in final558.ts.
+    return Math.round(total * 10 * 100) / 100;
   }, [data, overrides]);
 
   if (!data) {

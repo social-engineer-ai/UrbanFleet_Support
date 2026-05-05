@@ -165,6 +165,15 @@ model Final558Session {
   forcedJames      Boolean   @default(false)
   // Currently active stakeholder (the one whose turn it is to speak next).
   activeStakeholder String   @default("elena")
+  // JSON snapshot of per-stakeholder recall + interaction-depth flags,
+  // built once at session start from the student's prior client-agent
+  // conversations (mentor excluded). Shape:
+  //   { elena: { summary, depth }, marcus: {...}, priya: {...},
+  //     james: {...}, didExtraWork: bool }
+  // Null until the recall builder runs (begin endpoint), and tolerated by
+  // the prompt builder as "no prior memory" so deploys without recall data
+  // still work.
+  recallBundle     String?
 
   user         User               @relation(fields: [userId], references: [id])
   conversation Conversation       @relation(fields: [conversationId], references: [id])
