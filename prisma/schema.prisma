@@ -24,6 +24,7 @@ model User {
   final558Attempts Final558Attempt[]
   final558Session  Final558Session?
   final558Score    Final558Score?
+  finalSurvey      FinalSurveyResponse?
 }
 
 model OtpCode {
@@ -220,4 +221,22 @@ model Final558Score {
 
   session Final558Session @relation(fields: [sessionId], references: [id])
   user    User            @relation(fields: [userId], references: [id])
+}
+
+// Anonymous-by-default end-of-final feedback survey. One row per
+// student. Identity is stored (so we can see who completed it for
+// outreach / completeness tracking), but the instructor-facing export
+// defaults to anonymized aggregates. Q17 lets the student opt in to
+// being quoted by name.
+model FinalSurveyResponse {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  sessionId   String? // FK to Final558Session, nullable so we don't lose responses if a session row is ever deleted
+  course      String // "558" | "358"
+  responses   String // JSON object: { q1: "...", q2: ["..."], q2_other: "...", ... }
+  submittedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([course, submittedAt])
 }

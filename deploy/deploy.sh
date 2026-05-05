@@ -10,9 +10,12 @@ cd "$APP_DIR"
 
 echo "=== Deploying StakeholderSim ==="
 
-# Pull latest code
-echo "--- Pulling latest code ---"
-git pull origin main
+# Pull latest code on whatever branch prod is checked out to. Prod has
+# historically tracked feat/final-558; pulling "main" would try to merge
+# main into the current branch and break the working tree.
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "--- Pulling latest code (branch: $BRANCH) ---"
+git pull origin "$BRANCH"
 
 # Install dependencies
 echo "--- Installing dependencies ---"
