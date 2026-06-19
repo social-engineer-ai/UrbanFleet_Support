@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { pseudonym } from "@/lib/leaderboard/anonymize";
 
 // Individual leaderboard for Part 3 (Features Proposals). Ranks students by the
 // number of ended Part 3 meetings they've had with any stakeholder. Filtered by
@@ -38,7 +39,8 @@ export async function GET(req: NextRequest) {
 
   const ranked = students
     .map((s) => ({
-      name: s.name,
+      // Display-only pseudonym keyed on the stable user id; real name in DB untouched.
+      name: pseudonym(s.id),
       featureProposals: s.conversations.length,
     }))
     .filter((s) => s.featureProposals > 0)

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SCENARIOS, BONUS_POINTS } from "@/lib/leaderboard/scenarios";
+import { pseudonym } from "@/lib/leaderboard/anonymize";
 
 // GET: Get leaderboard for a course section
 export async function GET(req: NextRequest) {
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
     include: {
       team: {
         include: {
-          members: { select: { name: true, email: true } },
+          members: { select: { id: true, name: true, email: true } },
         },
       },
     },
@@ -28,7 +29,9 @@ export async function GET(req: NextRequest) {
     rank: index + 1,
     teamId: entry.teamId,
     teamName: entry.team.name,
-    members: entry.team.members,
+    // Display-only pseudonyms keyed on stable user id; real names/emails stay in DB
+    // but are never sent to the client here.
+    members: entry.team.members.map((m) => ({ name: pseudonym(m.id) })),
     baselineScore: entry.baselineScore,
     enhancedScore: entry.enhancedScore,
     innovationScore: entry.innovationScore,
