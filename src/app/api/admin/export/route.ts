@@ -63,6 +63,18 @@ export async function GET() {
     "Shallow Reflections",
   ];
 
+  // Per-stakeholder engagement is stored as { requirements, solution } (5 pts
+  // each, 10 total) since the meeting-type rebalance. Older state blobs may
+  // still hold a single number — handle both so legacy rows don't read 0.
+  const personaEng = (v: unknown): number => {
+    if (typeof v === "number") return v;
+    if (v && typeof v === "object") {
+      const o = v as { requirements?: number; solution?: number };
+      return (o.requirements || 0) + (o.solution || 0);
+    }
+    return 0;
+  };
+
   const rows = students.map((s) => {
     const state = s.studentState ? JSON.parse(s.studentState.stateJson) : null;
     const sc = state?.conversation_scores || {};
@@ -73,7 +85,12 @@ export async function GET() {
     const reqs = state?.requirements_uncovered || {};
     const bp = state?.build_progress || {};
 
-    const engTotal = (eng.elena || 0) + (eng.marcus || 0) + (eng.priya || 0) + (eng.james || 0) + (eng.mentor || 0);
+    const engElena = personaEng(eng.elena);
+    const engMarcus = personaEng(eng.marcus);
+    const engPriya = personaEng(eng.priya);
+    const engJames = personaEng(eng.james);
+    const engMentor = typeof eng.mentor === "number" ? eng.mentor : 0;
+    const engTotal = engElena + engMarcus + engPriya + engJames + engMentor;
     const undTotal = (und.elena || 0) + (und.marcus || 0) + (und.priya || 0) + (und.james || 0) + (und.mentor_quality || 0);
     const expTotal = (exp.elena || 0) + (exp.marcus || 0) + (exp.priya || 0) + (exp.james || 0);
     const grandTotal = engTotal + undTotal + expTotal;
@@ -86,7 +103,7 @@ export async function GET() {
 
     return [
       s.name, s.email, s.course || "", s.teamId || "",
-      eng.elena || 0, eng.marcus || 0, eng.priya || 0, eng.james || 0, eng.mentor || 0, engTotal,
+      engElena, engMarcus, engPriya, engJames, engMentor, engTotal,
       und.elena || 0, und.marcus || 0, und.priya || 0, und.james || 0, und.mentor_quality || 0, undTotal,
       exp.elena || 0, exp.marcus || 0, exp.priya || 0, exp.james || 0, expTotal,
       grandTotal,
